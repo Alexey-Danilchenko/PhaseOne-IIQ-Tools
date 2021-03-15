@@ -8,7 +8,7 @@ The IIQ Profile is essentially a command line tool and has the following format
 
 ```
     IIQ Profile extraction utility
-    Usage: iiqprofile.exe -iglw [optional data] <IIQ file>
+    Usage: iiqprofile -iglw [optional data] <IIQ file>
       No options     - generates DCP profiles with Adobe curve
       -l             - generates DCP profiles with linear curve as opposed to Adobe standard
       -w <R> <G> <B> - specifies neutral white as R, G, B levels to use for DCP profile
@@ -21,13 +21,13 @@ The IIQ Profile is essentially a command line tool and has the following format
 
 For example invoking the following will generate .ICC profiles from matrices in CF000602.IIQ with gamma 2.35:
 ```
-    iiqutils -ig 2.35 CF000602.IIQ
+    iiqprofile -ig 2.35 CF000602.IIQ
 ```
 
 And  invoking the following will generate .DCP profiles with default ACR curve for given daylight levels from matrices
 in CF000602.IIQ (the levels obtained from RawDigger sampling of gray patch of the CC24 target under daylight):
 ```
-    iiqutils -w 12440.28 25390.79 20272.61 CF000602.IIQ
+    iiqprofile -w 12440.28 25390.79 20272.61 CF000602.IIQ
 ```
 
 ## A few notes
