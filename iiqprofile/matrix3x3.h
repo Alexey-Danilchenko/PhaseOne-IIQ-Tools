@@ -129,19 +129,19 @@ protected:
 // Operations on matrix and vector
 matrix3x3 operator*(const matrix3x3 &a, const matrix3x3 &b)
 {
-	matrix3x3 m;
+    matrix3x3 m;
 
     for (int i=0; i<3; ++i)
         for (int j=0, k=0; j<3; ++j)
-			for (k=0, m[i][j]=0.0; k < 3; ++k)
-				m[i][j] += a[i][k] * b[k][j];
+            for (k=0, m[i][j]=0.0; k < 3; ++k)
+                m[i][j] += a[i][k] * b[k][j];
 
-	return m;
+    return m;
 }
 
 vector3 operator*(const matrix3x3 &a, const vector3 &b)
 {
-	vector3 v;
+    vector3 v;
 
     for (int i=0, j=0; i<3; ++i)
         for (j=0, v[i] = 0.0; j<3; ++j)
@@ -151,13 +151,13 @@ vector3 operator*(const matrix3x3 &a, const vector3 &b)
 
 matrix3x3 operator+(const matrix3x3 &a, const matrix3x3 &b)
 {
-	matrix3x3 m(a);
+    matrix3x3 m(a);
 
     for (int i=0; i<3; ++i)
         for (int j=0; j<3; ++j)
             m[i][j] += b[i][j];
 
-	return m;
+    return m;
 }
 
 matrix3x3 Invert(const matrix3x3 &a)
@@ -172,9 +172,9 @@ matrix3x3 Invert(const matrix3x3 &a)
                 a[2][0]*a[0][1] - a[0][0]*a[2][1],
                 a[0][0]*a[1][1] - a[1][0]*a[0][1]);
 
-	double det = (a[0][0]*m[0][0] + a[0][1]*m[1][0] + a[0][2]*m[2][0]);
+    double det = (a[0][0]*m[0][0] + a[0][1]*m[1][0] + a[0][2]*m[2][0]);
 
-	if (std::fabs(det) > 1.0E-10)
+    if (std::fabs(det) > 1.0E-10)
     {
         for (int i=0; i<3; ++i)
             for (int j=0; j<3; ++j)
@@ -182,7 +182,7 @@ matrix3x3 Invert(const matrix3x3 &a)
         return m;
     }
 
-	return a;
+    return a;
 }
 
 #endif
