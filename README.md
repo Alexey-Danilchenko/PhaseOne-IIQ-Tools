@@ -7,6 +7,6 @@ All software on this site is released free and under GPL license and in hope tha
 The following is the list of available utilities in source code and prebuilt for Windows/MacOS (Intel):
 
 * [IIQ Utils](iiqutils) -  utility to dump contents of IIQ file (Phase One sections) in readable format, extract and dump calibration file etc.
-* [IIQ Profile](iiqprofile) - COMING SOON
+* [IIQ Profile](iiqprofile) - utility to extract built into IIQ profiles (into .ICC and .DCP)
 * [IIQ Remap](IIQRemap) - COMING SOON
-[Profiles
+* [Profiles (.DCP and .ICC) built or converted by me](profiles)
