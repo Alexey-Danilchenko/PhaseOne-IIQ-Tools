@@ -9,7 +9,7 @@ DCP profiles are built in two versions: with linear tonal curve and with default
 The following is the list of available profiles:
 
 * [Adobe Standard Matrix ICC](Phase_One_P25+_Standard_Daylight.ICC). This ICC profile made from Adobe Standard matrix for Phase One P25+ with gamma 2.35 tone curve and D50 white point.
-* [Daylight ICC](P25+_Daylight.icc). This is a matrix profile build from individually measured Color Checker SG target unders clear daylight sky illuminant.
+* [Daylight ICC](P25+_Daylight.icc). This is a matrix profile build from individually measured Color Checker SG target under a clear daylight sky illuminant.
 * [Adobe Standard Matrix DCP](Phase_One_P25+_Standard_Daylight.DCP). Adobe standard matrix, no hue twists, adjusted to D50 and my camera whitebalance with default ACR tonal curve.
 * [Adobe Standard Matrix Linear DCP](Phase_One_P25+_Standard_Daylight_Linear.DCP). Adobe standard matrix, no hue twists, adjusted to D50 and my camera whitebalance with linear tonal curve.
 * [Daylight DCP](P25+_Daylight.dcp). DCP matrix profile build from individually measured Color Checker SG target under a clear daylight sky illuminant with default ACR tonal curve.
