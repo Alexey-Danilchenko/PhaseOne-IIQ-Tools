@@ -1095,11 +1095,11 @@ void processIiqCalIfd(uint8_t* buf, uint32_t size, uint32_t ifdOffset)
                                 ? calTagDataTypes[iiqTag]
                                 : 1;
 
-        if (sizeBytes <= 4)
-            data = (uint8_t*)(&(tagData->data)) - buf;
-
         if (sizeBytes == 0)
+        {
+            data = (uint8_t*)(&(tagData->data)) - buf;
             sizeBytes = 4;
+        }
 
         if (tagNumbers.size() == 0 ||
             (tagsExcluded && tagNumbers.find(iiqTag) == tagNumbers.end()) ||
