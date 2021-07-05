@@ -54,7 +54,7 @@
 #include <vector>
 #include <memory>
 
-#define APP_VERSION " v1.0"
+#define APP_VERSION " v1.1"
 
 #define MAIN_TITLE APP_NAME APP_VERSION
 
@@ -511,7 +511,10 @@ void IIQRemap::openCalFile()
 
             ui.rawImage->setCalFile(newCalFile);
             if (ui.chkApplyDefectCorr->checkState() == Qt::Checked)
+            {
                 processRawData();
+                updateThresholdStats(C_ALL);
+            }
             updateWidgets();
             updateDefectStats();
         }
@@ -583,7 +586,10 @@ void IIQRemap::discardChanges()
     // reload
     ui.rawImage->discardChanges();
     if (ui.chkApplyDefectCorr->checkState() == Qt::Checked)
+    {
         processRawData();
+        updateThresholdStats(C_ALL);
+    }
     updateWidgets();
     updateDefectStats();
 }
@@ -699,6 +705,7 @@ void IIQRemap::loadRaw()
 
             // process raw data to gather stats
             processRawData();
+            calculateThresholds();
         }
 
         rawFileName = fileNames.at(0);
@@ -804,9 +811,6 @@ void IIQRemap::processRawData()
     avgVal[C_GREEN2] /= nValues;
 
     updateRawStats();
-
-    // calculate thersholds
-    calculateThresholds();
 }
 
 void IIQRemap::updateRawStats()
@@ -926,6 +930,7 @@ void IIQRemap::autoRemap()
                         blockSize(ui.cbAdaptiveBlock->currentIndex())))
         {
             processRawData();
+            updateThresholdStats(C_ALL);
             updateWidgets();
             updateDefectStats();
         }
@@ -933,6 +938,7 @@ void IIQRemap::autoRemap()
     else if (ui.rawImage->performAvgAutoRemap(avgVal, threshold))
     {
         processRawData();
+        updateThresholdStats(C_ALL);
         updateWidgets();
         updateDefectStats();
     }
@@ -1093,6 +1099,7 @@ void IIQRemap::applyDefectCorr(int state)
 {
     ui.rawImage->setDefectCorr(state==Qt::Checked);
     processRawData();
+    updateThresholdStats(C_ALL);
     updateWidgets();
     updateDefectStats();
 }

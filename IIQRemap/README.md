@@ -154,8 +154,8 @@ This may be useful to start remap of certain defects from scratch.
 
 #### Apply defects corr.
 
-This tickbox will apply current defects corrections to the raw file just as it would be when it is
-processed by any raw processing software. This action is static and only happens when tickbox is
+This tickbox when selected will apply current defects remap to the raw file just as it would be when
+it is processed by any raw processing software. This action is static and only happens when tickbox is
 toggled or raw or calibration file loaded. So to trigger new remapped defects to be applied deselect
 this option and select again. Selecting this is crucial and mandatory for successful auto remap so
 always apply it first before proceeding with automatic remap.

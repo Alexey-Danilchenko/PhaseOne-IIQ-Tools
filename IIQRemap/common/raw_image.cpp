@@ -629,6 +629,10 @@ bool IIQRawImage::setCalFile(IIQCalFile& calFile)
 
     calFile_.swap(calFile);
 
+    // update raw
+    iiqFile_->applyPhaseOneCorr(calFile_, applyDefectCorr_);
+    updateRaw();
+
     // update bitmap
     updateDefectsBitmap();
 
