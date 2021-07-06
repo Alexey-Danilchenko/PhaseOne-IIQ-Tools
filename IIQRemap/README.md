@@ -70,19 +70,19 @@ to refresh raw display) and untick all defects in defect selection section to se
 7) Repeat the procedure by loading abother dark raw or stack of them for the same digital back (remapped
 defects will be preserved across the load).
 
-8) Save the caslibration file when satisfied (or intermediately to save remap results)
+8) Save the calibration file when satisfied (or do it intermediately whilst progressing with remap).
 
 9) Use Phase One Firmware Update utility to upload calibration file to your back and enjoy the results.
 
-Of course the above are only recommended procedure. You can use manual remaps with just about any file
+Of course the above is only a recommended procedure. You can do manual remap with just about any file
 (if the defects can be clearly seen). The automatic remaps of defective points however will only work
 if the raw shot is uniform (i.e. roughly all of the same level - all dark or all grey or all white etc).
 
 ## The IIQ Remap program features.
 
-The program functionality and controls is divided into two functional areas: one that has to do with raw file
+The program functionality and controls are divided into two functional areas: one that has to do with raw file
 appearance and another that has to do with remap of defects. This can be seen on the two separate tabs to the
-left holding all the user interface for each of those areas in separate tab.
+left holding all the user interface for each of those areas in separate tabs.
 
 All the menus (except help) are duplicated with buttons on the right side of the main window so won't be
 described here separately.
