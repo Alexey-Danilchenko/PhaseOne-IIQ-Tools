@@ -592,7 +592,7 @@ void IIQRawImage::setDefectColour(QColor &colour)
         repaint();
 }
 
-bool IIQRawImage::openCalFile(const std::string& fileName)
+bool IIQRawImage::openCalFile(const IIQCalFile::TFileNameType& fileName)
 {
     if (!iiqFile_)
         return false;

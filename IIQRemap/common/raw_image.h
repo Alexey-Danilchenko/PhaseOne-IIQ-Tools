@@ -173,7 +173,7 @@ public:
     IIQCalFile& getCalFile() { return calFile_; }
     std::unique_ptr<IIQFile>& getRawImage() { return iiqFile_; }
 
-    bool openCalFile(const std::string& fileName);
+    bool openCalFile(const IIQCalFile::TFileNameType& fileName);
     bool setCalFile(IIQCalFile& calFile);
     void discardChanges();
     void updateDefects()

@@ -26,7 +26,6 @@
 #include "about.h"
 
 #include <QAbstractSlider>
-#include <QByteArray>
 #include <QColorDialog>
 #include <QDesktopServices>
 #include <QDoubleSpinBox>
@@ -54,7 +53,7 @@
 #include <vector>
 #include <memory>
 
-#define APP_VERSION " v1.2"
+#define APP_VERSION " v1.3"
 
 #define MAIN_TITLE APP_NAME APP_VERSION
 
@@ -155,6 +154,13 @@ inline double log2(double x) { return log(x)/log(2.0); }
 
 inline uint16_t blockSize(int index) { return uint16_t((index<<1)+4); }
 
+#if defined(WIN32) || defined(_WIN32)
+#define TO_STDSTR(qs)  (qs.toStdWString())
+#define TO_QSTR(s)  (QString::fromStdWString(s))
+#else
+#define TO_STDSTR(qs)  (qs.toStdString())
+#define TO_QSTR(s)  (QString::fromStdString(s))
+#endif
 
 // --------------------------------------------------------
 //    IIQRemap class
@@ -423,7 +429,7 @@ void IIQRemap::updateWidgets()
     {
         if (auto serial = ui.rawImage->getCalFile().getCalSerial(); !serial.empty())
             title.append(tr("       Serial: ")).append(serial.c_str());
-        QFileInfo info(ui.rawImage->getCalFile().getCalFileName().c_str());
+        QFileInfo info(TO_QSTR(ui.rawImage->getCalFile().getCalFileName()));
         title.append("       CAL: ")
              .append(info.fileName().isEmpty() ? "not saved" : info.fileName());
         if (ui.rawImage->hasUnsavedChanges())
@@ -481,7 +487,7 @@ void IIQRemap::openCalFile()
         QFileInfo info(fileName);
         curCalPath = info.absolutePath();
 
-        IIQCalFile newCalFile(fileName.toUtf8().data());
+        IIQCalFile newCalFile(TO_STDSTR(fileName));
 
         if (!newCalFile.valid())
         {
@@ -552,13 +558,13 @@ bool IIQRemap::saveCal()
             return false;
         }
 
-        calFile.setCalFileName(info.absoluteFilePath().toUtf8().constData());
+        calFile.setCalFileName(TO_STDSTR(info.absoluteFilePath()));
         success = calFile.saveCalFile();
         if (success)
             curCalPath = info.absolutePath();
         else
             // reset the file name as it was not successful
-            calFile.setCalFileName(std::string());
+            calFile.setCalFileName(TO_STDSTR(QString()));
     }
     else
         success = calFile.saveCalFile();
@@ -627,10 +633,8 @@ void IIQRemap::loadRaw()
 		curRawPath = info.absolutePath();
 
         auto iiqFile = std::make_unique<IIQFile>();
-        QByteArray byteStr = fileNames.at(0).toUtf8();
         int ret = LIBRAW_SUCCESS;
-
-        if ((ret = iiqFile->open_file(byteStr.constData())) != LIBRAW_SUCCESS)
+        if ((ret = iiqFile->open_file(TO_STDSTR(fileNames.at(0)).c_str())) != LIBRAW_SUCCESS)
         {
             showMessage(tr("Error"), tr("Error opening file\n%1!").arg(fileNames.at(0)));
         }
@@ -728,8 +732,7 @@ int IIQRemap::loadRawStack(IIQFile& file, QStringList fileNames)
     // attempt to go and open all raw files
     for (int i=1; result==LIBRAW_SUCCESS && i<rawCount; ++i)
     {
-        QByteArray byteStr = fileNames.at(i).toUtf8();
-        if ((result = iiqFiles[i-1].open_file(byteStr.constData())) != LIBRAW_SUCCESS)
+        if ((result = iiqFiles[i-1].open_file(TO_STDSTR(fileNames.at(i)).c_str())) != LIBRAW_SUCCESS)
             showMessage(tr("Error"), tr("Error opening file\n%1!").arg(fileNames.at(i)));
         else if (!iiqFiles[i-1].isPhaseOne())
         {

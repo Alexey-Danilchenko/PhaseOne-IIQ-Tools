@@ -35,13 +35,18 @@ class IIQCalFile
 {
 public:
     // datatypes
+#if defined(WIN32) || defined(_WIN32)
+    using TFileNameType = std::wstring;
+#else
+    using TFileNameType = std::string;
+#endif
     using TDefPixels = std::set<std::pair<int,int>>;
     using TDefCols = std::set<int>;
 
     // Initialisers/destructors
     IIQCalFile() : convEndian_(false), hasChanges_(false) {};
     IIQCalFile(const uint8_t* data, const size_t size);
-    IIQCalFile(const std::string& fileName);
+    IIQCalFile(const TFileNameType& fileName);
     ~IIQCalFile() = default;
 
     // Assignment
@@ -64,12 +69,12 @@ public:
 
     // Getters for cal data
     const std::string& getCalSerial() const   { return calSerial_; }
-    const std::string& getCalFileName() const { return calFileName_; }
+    const TFileNameType& getCalFileName() const    { return calFileName_; }
     const TDefPixels& getDefectPixels() const { return defPixels_; }
     const TDefCols& getDefectCols() const     { return defCols_; }
 
     // Setting file for saving
-    void setCalFileName(const std::string& fileName) { calFileName_ = fileName; }
+    void setCalFileName(const TFileNameType& fileName) { calFileName_ = fileName; }
 
     // Defect checks
     bool isDefPixel(int col, int row) const { return defPixels_.find({col, row}) != defPixels_.end(); }
@@ -105,7 +110,7 @@ private:
     TDefPixels defPixels_;
     TDefCols defCols_;
     std::string calSerial_;
-    std::string calFileName_;
+    TFileNameType calFileName_;
     std::vector<uint8_t> calFileData_;
     std::set<uint32_t> calTags_;
     bool convEndian_;

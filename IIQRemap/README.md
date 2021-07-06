@@ -3,6 +3,10 @@
 This software allows to perform defective pixels and columns remap for Phase One digital backs. Currently supported
 digital back models are Phase One Pnn/Pnn+ backs. Newer IIQ backs may work as well but were not extensively tested.
 
+## Windows version
+Windows version has a depndency on Microsoft Visual Studio runtime which may or may not be on your system. So if the prebuild version
+does not startup properly, get the [vc_redist.x64.exe for Visual Studio 2019 from Microsoft](https://support.microsoft.com/en-us/topic/the-latest-supported-visual-c-downloads-2647da03-1eea-4433-9aff-95f26a218cc0) and install it on your Windows system.
+
 ## Building from sources
 The build system has been ported to CMake so it should be easier to build. The dependencies for this project are (with minimum versions - those were tested):
 * QT v5.15

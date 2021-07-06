@@ -16,12 +16,6 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
-# static linking for MSVC
-if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-endif()
-
-
 # Usage of TBB clashes with QT internal emit keyword
 ADD_DEFINITIONS(-DQT_NO_KEYWORDS)
 

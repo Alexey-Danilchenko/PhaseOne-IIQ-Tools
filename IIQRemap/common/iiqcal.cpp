@@ -22,6 +22,8 @@
 
 #include "iiqcal.h"
 
+#include <QString>
+
 #include <ctime>
 #include <cstdio>
 #include <filesystem>
@@ -142,23 +144,35 @@ IIQCalFile::IIQCalFile(const uint8_t* data, const size_t size)
     parseCalFileData();
 }
 
-IIQCalFile::IIQCalFile(const std::string& fileName)
+IIQCalFile::IIQCalFile(const IIQCalFile::TFileNameType& fileName)
     : calFileName_(fileName), convEndian_(false), hasChanges_(false)
 {
     if (fileName.empty())
         return;
 
-    if (uint32_t size = (uint32_t)std::filesystem::file_size(fileName))
+    try
     {
-        if (auto *file = std::fopen(calFileName_.c_str(), "rb"))
+        if (uint32_t size = (uint32_t)std::filesystem::file_size(fileName))
         {
-            calFileData_.resize(size);
-            if (std::fread(calFileData_.data(), 1, size, file) == size)
-                parseCalFileData();
-            else
-                calFileData_.resize(0);
-            std::fclose(file);
+#if defined(WIN32) || defined(_WIN32)
+            if (auto *file = _wfopen(calFileName_.c_str(), L"rb"))
+#else
+            if (auto *file = std::fopen(calFileName_.c_str(), "rb"))
+#endif
+            {
+                calFileData_.resize(size);
+                if (std::fread(calFileData_.data(), 1, size, file) == size)
+                    parseCalFileData();
+                else
+                    calFileData_.resize(0);
+                std::fclose(file);
+            }
         }
+    }
+    catch (...)
+    {
+        // invalid file
+        calFileName_.clear();
     }
 }
 
@@ -269,7 +283,11 @@ bool IIQCalFile::saveCalFile()
     }
 
     // save binary
+#if defined(WIN32) || defined(_WIN32)
+    if (auto *file = _wfopen(calFileName_.c_str(), L"wb"))
+#else
     if (auto *file = std::fopen(calFileName_.c_str(), "wb"))
+#endif
     {
         success = std::fwrite(calFileData_.data(), 1, calFileData_.size(), file)
                         == calFileData_.size();
