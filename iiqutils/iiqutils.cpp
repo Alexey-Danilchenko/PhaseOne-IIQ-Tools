@@ -1421,17 +1421,40 @@ int main(int argc, char* argv[])
 
             bigEndian = iiqHeader->iiqMagic == IIQ_BIGENDIAN;
 
-            if (!validMagic ||
-                fromBigEndian(iiqHeader->rawMagic)>>8 != IIQ_RAW ||
-                fromBigEndian(iiqHeader->dirOffset) == 0xbad0bad)
+            bool iiqCal = false;
+            if (!validMagic)
             {
-                printf("The %s is not a IIQ file!\n", iiqFileName);
-                delete[] inBuf;
-                return 1;
-            }
+                // try to see if it is calibration file
+                iiqHeader = (TIIQHeader*)inBuf;
 
-            ifdEntries.emplace_back(0, inBuf+fromBigEndian(tiffHeader->dirOffset), 0);
-            processIfd(inBuf, inSize);
+                if ((iiqHeader->iiqMagic == IIQ_LITTLEENDIAN ||
+                     iiqHeader->iiqMagic == IIQ_BIGENDIAN) &&
+                     fromBigEndian(iiqHeader->dirOffset) < inSize)
+                {
+                    // it is calibration file
+                    tagNameContext = IIQ_CalibrationData;
+                    processIiqCalIfd(inBuf, inSize, fromBigEndian(iiqHeader->dirOffset));
+                }
+                else
+                {
+                    printf("The %s is not a Phase One calibration file!\n", iiqFileName);
+                    delete[] inBuf;
+                    return 1;
+                }
+            }
+            else
+            {
+                if (fromBigEndian(iiqHeader->rawMagic)>>8 != IIQ_RAW ||
+                    fromBigEndian(iiqHeader->dirOffset) == 0xbad0bad)
+                {
+                    printf("The %s is not a IIQ file!\n", iiqFileName);
+                    delete[] inBuf;
+                    return 1;
+                }
+
+                ifdEntries.emplace_back(0, inBuf+fromBigEndian(tiffHeader->dirOffset), 0);
+                processIfd(inBuf, inSize);
+            }
 
             delete[] inBuf;
         }

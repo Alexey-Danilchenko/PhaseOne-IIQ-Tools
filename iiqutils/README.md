@@ -1,12 +1,12 @@
 # IIQ Utilities
 
-This is a command line utility that allows to explore and dump Phase One specific contents of the IIQ file sections and extract a digital back calibration files (those could be uploaded to back via Phase One Firmware Update utility if the back supports calibration data in case something goes wrong - good for backup).
+This is a command line utility that allows to explore and dump Phase One specific contents of the IIQ file sections and extract a digital back calibration files (those could be uploaded to back via Phase One Firmware Update utility if the back supports calibration data in case something goes wrong - good for backup). It can also do the same for calibration file if specified instead of IIQ (dump contents etc).
 
 ## Running IIQ Utilities
 
 The IIQ utils is essentially a command line tool and has the following format
 ```
-    iiqutils -clpdxfur <filename.IIQ> [tag1,tag2-tag3,...]
+    iiqutils -clpdxfur <filename> [tag1,tag2-tag3,...]
 
     Options (can be combined in any way):
             -c - extract the calibration file (written as <back serial>.cal)
@@ -26,6 +26,11 @@ The IIQ utils is essentially a command line tool and has the following format
 For example invoking the following will dump all known tags from CF000602.IIQ with contents into DUMP.TXT file:
 ```
     iiqutils -lpfd CF000602.IIQ >DUMP.TXT
+```
+
+Or the same as above when invoking the utility for DK020261.calib calibration file:
+```
+    iiqutils -lpfd DK020261.calib >DUMP.TXT
 ```
 
 And  invoking the following will extract contents of the calibration file into <back_serial>.cal:
