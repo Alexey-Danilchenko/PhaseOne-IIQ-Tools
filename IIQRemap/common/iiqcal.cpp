@@ -411,7 +411,7 @@ bool IIQCalFile::rebuildCalFileData(std::vector<uint8_t>& calFileData) const
 
     // parse and copy original file
     bool hasDefTag = calTags_.find(CAL_DefectCorrection) != calTags_.end();
-    bool hasModTime = calTags_.find(CAL_TimeModified) != calTags_.end();
+    bool hasCreateTime = calTags_.find(CAL_TimeCreated) != calTags_.end();
     TIIQHeader* hdr = (TIIQHeader*)calFileData_.data();
     uint32_t ifdOffset = convEndian32(hdr->dirOffset, convEndian_);
 
@@ -427,7 +427,7 @@ bool IIQCalFile::rebuildCalFileData(std::vector<uint8_t>& calFileData) const
     if (!entries || (uint8_t*)(tagEntry + entries) > end)
         return false;
 
-    std::vector<TIiqCalTagEntry> newCalTags(entries+!hasDefTag+!hasModTime);
+    std::vector<TIiqCalTagEntry> newCalTags(entries+!hasDefTag+!hasCreateTime);
 
     int newIdx=0;
     for (int idx=0; idx<entries; ++idx, ++newIdx)
@@ -447,17 +447,10 @@ bool IIQCalFile::rebuildCalFileData(std::vector<uint8_t>& calFileData) const
         }
 
         // add mod time if needed
-        if (!hasModTime && tag == CAL_TimeCreated)
+        if (tag == CAL_TimeCreated || tag == CAL_TimeModified)
         {
-            ++newIdx;
-            tag = CAL_TimeModified;
-            newCalTags[newIdx].tag = convEndian32(tag, convEndian_);
-            newCalTags[newIdx].sizeBytes = 0;
-            hasModTime = true;
-        }
-
-        if (tag == CAL_TimeModified)
             newCalTags[newIdx].data = convEndian32(modTime, convEndian_);
+        }
         else if (tag == CAL_DefectCorrection)
         {
             if (tagData+sizeBytes > end)
@@ -487,9 +480,9 @@ bool IIQCalFile::rebuildCalFileData(std::vector<uint8_t>& calFileData) const
     }
 
     // add missing tags
-    if (!hasModTime && newIdx<newCalTags.size())
+    if (!hasCreateTime && newIdx<newCalTags.size())
     {
-        newCalTags[newIdx].tag = convEndian32(CAL_TimeModified, convEndian_);
+        newCalTags[newIdx].tag = convEndian32(CAL_TimeCreated, convEndian_);
         newCalTags[newIdx].sizeBytes = 0;
         newCalTags[newIdx].data = convEndian32(modTime, convEndian_);
         ++newIdx;

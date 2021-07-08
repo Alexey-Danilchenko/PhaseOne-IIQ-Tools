@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.17)
 
+# For MacOS only
+set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum OS X deployment version")
+
 project(IIQRemap)
 
 # Search path for cmake modules
