@@ -53,7 +53,7 @@
 #include <vector>
 #include <memory>
 
-#define APP_VERSION " v1.4"
+#define APP_VERSION " v1.5"
 
 #define MAIN_TITLE APP_NAME APP_VERSION
 
@@ -259,6 +259,11 @@ IIQRemap::IIQRemap()
     connect(ui.actionAbout, SIGNAL(triggered()), this, SLOT(about()));
     connect(ui.actionQuit, SIGNAL(triggered()), this, SLOT(close()));
 
+    // button group
+    ui.btnGrpSensorPlus->setId(ui.btnStd, false);
+    ui.btnGrpSensorPlus->setId(ui.btnSensorPlus, true);
+    connect(ui.btnGrpSensorPlus, SIGNAL(idClicked(int)), this, SLOT(sensorPlusSelected(int)));
+
     setWindowTitle(MAIN_TITLE);
 
     // raw image events
@@ -449,15 +454,18 @@ void IIQRemap::updateWidgets()
     ui.btnSave->setEnabled(hasCalFile);
     ui.btnReset->setEnabled(hasCalFile);
 
-    //ui.actionSave->setEnabled(hasCalFile);
-    //ui.actionDiscard_changes->setEnabled(hasCalFile);
-
     if (hasCalFile)
     {
         ui.grpRemapThr->setEnabled(hasRaw);
         ui.btnAutoRemap->setEnabled(hasRaw);
         ui.btnDetectFromRaw->setEnabled(hasRaw);
     }
+
+    // Sensor+ selecting buttons
+    ui.btnStd->setVisible(ui.rawImage->supportsSensorPlus());
+    ui.btnStd->setEnabled(ui.rawImage->rawLoaded(false));
+    ui.btnSensorPlus->setVisible(ui.rawImage->supportsSensorPlus());
+    ui.btnSensorPlus->setEnabled(ui.rawImage->rawLoaded(true));
 
     updateAutoRemap();
 }
@@ -534,6 +542,18 @@ bool IIQRemap::saveCal()
     if (!calFile.valid())
         return true;
 
+    if (!calFile.fullyValid() &&
+        showMessage(tr("Warning"),
+                    tr("The %1 calibration file is for digital back with Sensor+ but\n"
+                       "contains only partial calibration (either standard or Sensor+)!"
+                      ).arg(calFile.getCalSerial().c_str()),
+                    tr("Do you still want to save it?"),
+                    QMessageBox::Question,
+                    QMessageBox::Yes | QMessageBox::No) == QMessageBox::No)
+    {
+        return false;
+    }
+
     bool success = false;
     if (calFile.getCalFileName().empty())
     {
@@ -579,12 +599,8 @@ bool IIQRemap::saveCal()
 
 void IIQRemap::saveCalFile()
 {
-    QApplication::setOverrideCursor(QCursor(Qt::WaitCursor));
-
     if (saveCal())
         updateWidgets();
-
-    QApplication::restoreOverrideCursor();
 }
 
 void IIQRemap::discardChanges()
@@ -600,15 +616,63 @@ void IIQRemap::discardChanges()
     updateDefectStats();
 }
 
+void IIQRemap::sensorPlusSelected(int id)
+{
+    if (lockModeChange || ui.rawImage->getSensorPlus() == (bool)id)
+        return;
+
+    setOverrideCursor(QCursor(Qt::WaitCursor));
+
+    auto& iiqFile = ui.rawImage->getRawImage(id);
+
+    // get WB
+    float* wb = iiqFile->imgdata.color.cam_mul;
+
+    if (wb[0] <= 0)
+        wb = iiqFile->imgdata.color.pre_mul;
+
+    camWB[C_RED]    = wb[C_RED];
+    camWB[C_GREEN]  = wb[C_GREEN];
+    camWB[C_BLUE]   = wb[C_BLUE];
+    camWB[C_GREEN2] = wb[C_GREEN2];
+
+    if (camWB[C_GREEN2] <= 0)
+        camWB[C_GREEN2] = camWB[C_GREEN];
+
+    double maxGreen = std::max(camWB[C_GREEN], camWB[C_GREEN2]);
+    if (maxGreen == 0.0)
+        maxGreen = 1.0;
+
+    // normalise camWB
+    camWB[C_RED]    /= maxGreen;
+    camWB[C_GREEN]  /= maxGreen;
+    camWB[C_BLUE]   /= maxGreen;
+    camWB[C_GREEN2] /= maxGreen;
+
+    // recalculate fit
+    if (ui.cboxZoomLevel->currentIndex()==0)
+        scale = fitScale(iiqFile->imgdata.sizes.raw_width,
+                         iiqFile->imgdata.sizes.raw_height,
+                         *ui.rawImage);
+    ui.rawImage->setSensorPlus(id, scale);
+
+    // process raw data to gather stats
+    processRawData();
+    calculateThresholds();
+
+    updateWidgets();
+    updateDefectStats();
+
+    restoreOverrideCursor();
+}
+
 void IIQRemap::loadRaw()
 {
     auto fileNames = QFileDialog::getOpenFileNames(
                         this,
                         tr("Load Phase One .IIQ file(s)"),
                         curRawPath,
-                        tr("Phase One IIQ (*.iiq *.tif)"));
-
-    QApplication::setOverrideCursor(QCursor(Qt::WaitCursor));
+                        tr("Phase One IIQ (*.iiq *.tif *.tiff)"));
 
     // filter through and leave only files
     auto it = fileNames.begin();
@@ -628,6 +692,7 @@ void IIQRemap::loadRaw()
     }
     else if (fileNames.size() > 0)
     {
+        setOverrideCursor(QCursor(Qt::WaitCursor));
         // read the first raw
         QFileInfo info(fileNames.at(0));
 		curRawPath = info.absolutePath();
@@ -676,6 +741,9 @@ void IIQRemap::loadRaw()
         // actually load the data into control
         if (ret == LIBRAW_SUCCESS)
         {
+            // it may have been reset by message window - set it again
+            setOverrideCursor(QCursor(Qt::WaitCursor));
+
             // get WB
             float* wb = iiqFile->imgdata.color.cam_mul;
 
@@ -707,6 +775,12 @@ void IIQRemap::loadRaw()
                                  *ui.rawImage);
             ui.rawImage->setRawImage(iiqFile, scale);
 
+            // update selected Sensor+ buttons
+            lockModeChange = true;
+            if (auto btn = ui.btnGrpSensorPlus->button(ui.rawImage->getSensorPlus()))
+                btn->setChecked(true);
+            lockModeChange = false;
+
             // process raw data to gather stats
             processRawData();
             calculateThresholds();
@@ -717,19 +791,20 @@ void IIQRemap::loadRaw()
         updateDefectStats();
     }
 
-    QApplication::restoreOverrideCursor();
+    restoreOverrideCursor();
 }
 
 // The number of files in a stack passed here needs to be limited by MAX_RAWS
 int IIQRemap::loadRawStack(IIQFile& file, QStringList fileNames)
 {
-    QApplication::setOverrideCursor(QCursor(Qt::WaitCursor));
+    setOverrideCursor(QCursor(Qt::WaitCursor));
 
     int rawCount = fileNames.size()>MAX_RAWS ? MAX_RAWS : fileNames.size();
     auto iiqFiles = std::make_unique<IIQFile[]>(rawCount-1);
     int result = LIBRAW_SUCCESS;
 
     // attempt to go and open all raw files
+    bool sensorPlus = file.isSensorPlus();
     for (int i=1; result==LIBRAW_SUCCESS && i<rawCount; ++i)
     {
         if ((result = iiqFiles[i-1].open_file(TO_STDSTR(fileNames.at(i)).c_str())) != LIBRAW_SUCCESS)
@@ -747,6 +822,13 @@ int IIQRemap::loadRawStack(IIQFile& file, QStringList fileNames)
             showMessage(tr("Error"),
                         tr("File %1 is not\nfrom the same Phase One camera as the first file!")
                             .arg(fileNames.at(i)));
+        }
+        else if (iiqFiles[i-1].isSensorPlus() != sensorPlus)
+        {
+            result = LIBRAW_FILE_UNSUPPORTED;
+            auto msg = sensorPlus ? tr("File %1 is not\ntaken with Sensor+ as the first file!")
+                                  : tr("File %1 is taken\nwith Sensor+ unlike the first file!");
+            showMessage(tr("Error"), msg.arg(fileNames.at(i)));
         }
         else if ((result = iiqFiles[i-1].unpack()) != LIBRAW_SUCCESS)
             showMessage(tr("Error"), tr("Error unpacking IIQ file %1!").arg(fileNames.at(i)));
@@ -772,7 +854,7 @@ int IIQRemap::loadRawStack(IIQFile& file, QStringList fileNames)
         });
     }
 
-    QApplication::restoreOverrideCursor();
+    restoreOverrideCursor();
 
     return result;
 }

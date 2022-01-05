@@ -168,6 +168,7 @@ IIQRawImage::IIQRawImage(QWidget *parent)
       applyDefectCorr_(false),
       curDefSetMode_(M_NONE),
 	  width_(0), height_(0), topMargin_(0), leftMargin_(0),
+      curSensorPlus_(false),
       scale_(1), pX(0), pY(0),
       pauseUpdates_(false), rawData8_(0),
       renderingType_(R_RGB), applyGamma_(true),
@@ -268,7 +269,7 @@ QSize IIQRawImage::sizeHint() const
 
 void IIQRawImage::paintEvent(QPaintEvent *p)
 {
-    if (!iiqFile_ && !calFile_.valid())
+    if (!iiqFile_[curSensorPlus_] && !calFile_.valid(curSensorPlus_))
         QLabel::paintEvent(p);
     else
     {
@@ -295,13 +296,13 @@ void IIQRawImage::paintEvent(QPaintEvent *p)
         exposedRect = painter.worldTransform().inverted().mapRect(exposedRect).adjusted(-1, -1, 1, 1);
         imageRect   = painter.worldTransform().inverted().mapRect(imageRect).adjusted(-1, -1, 1, 1);
 
-        if (iiqFile_)
+        if (iiqFile_[curSensorPlus_])
             painter.drawPixmap(exposedRect, rawPixmap_, imageRect);
 
-        if (calFile_.valid())
+        if (calFile_.valid(curSensorPlus_))
         {
             painter.setPen(pen);
-            if (iiqFile_)
+            if (iiqFile_[curSensorPlus_])
                 painter.setBackgroundMode(Qt::TransparentMode);
             else
             {
@@ -325,7 +326,7 @@ void IIQRawImage::resizeEvent(QResizeEvent *event)
 
 void IIQRawImage::mouseMoveEvent(QMouseEvent * e)
 {
-    if (iiqFile_)
+    if (iiqFile_[curSensorPlus_])
     {
         uint16_t col = uint16_t(double(e->x()-pX)/scale_);
         uint16_t row = uint16_t(double(e->y()-pY)/scale_);
@@ -337,7 +338,7 @@ void IIQRawImage::mouseMoveEvent(QMouseEvent * e)
 
 void IIQRawImage::mousePressEvent(QMouseEvent * e)
 {
-    if (calFile_.valid() && curDefSetMode_ != M_NONE)
+    if (calFile_.valid(curSensorPlus_) && curDefSetMode_ != M_NONE)
     {
         uint16_t col = uint16_t(double(e->x()-pX)/scale_);
         uint16_t row = uint16_t(double(e->y()-pY)/scale_);
@@ -352,15 +353,15 @@ void IIQRawImage::mousePressEvent(QMouseEvent * e)
 
         if (enablePoints_ && curDefSetMode_==M_POINT)
         {
-            updated = calFile_.isDefPixel(col, row)
-                        ? calFile_.removeDefPixel(col, row)
-                        : calFile_.addDefPixel(col, row);
+            updated = calFile_.isDefPixel(col, row, curSensorPlus_)
+                        ? calFile_.removeDefPixel(col, row, curSensorPlus_)
+                        : calFile_.addDefPixel(col, row, curSensorPlus_);
         }
         else if (enableCols_ && curDefSetMode_==M_COL)
         {
-            updated = calFile_.isDefCol(col)
-                        ? calFile_.removeDefCol(col)
-                        : calFile_.addDefCol(col);
+            updated = calFile_.isDefCol(col, curSensorPlus_)
+                        ? calFile_.removeDefCol(col, curSensorPlus_)
+                        : calFile_.addDefCol(col, curSensorPlus_);
         }
 
         if (updated)
@@ -377,14 +378,14 @@ void IIQRawImage::setScale(double scale)
     {
         scale_ = scale;
         adjustSize();
-        if (iiqFile_ || calFile_.valid())
+        if (iiqFile_[curSensorPlus_] || calFile_.valid(curSensorPlus_))
             repaint();
     }
 }
 
 void IIQRawImage::setDefectSettingMode(EDefectMode mode)
 {
-    if (calFile_.valid())
+    if (calFile_.valid(curSensorPlus_))
     {
         curDefSetMode_ = mode;
 
@@ -521,24 +522,23 @@ void IIQRawImage::pauseUpdates(bool pauseUpdates)
     }
 }
 
-void IIQRawImage::setRawImage(std::unique_ptr<IIQFile>& iiqFile, double scale)
+void IIQRawImage::setSensorPlus(bool sensorPlus, double scale)
 {
-    width_ = iiqFile->imgdata.sizes.width;
-    leftMargin_ = iiqFile->imgdata.sizes.left_margin;
+    if (!iiqFile_[sensorPlus])
+        return;
 
-    height_ = iiqFile->imgdata.sizes.height;
-    topMargin_ = iiqFile->imgdata.sizes.top_margin;
+    curSensorPlus_ = sensorPlus;
+
+    width_ = iiqFile_[curSensorPlus_]->imgdata.sizes.width;
+    leftMargin_ = iiqFile_[curSensorPlus_]->imgdata.sizes.left_margin;
+
+    height_ = iiqFile_[curSensorPlus_]->imgdata.sizes.height;
+    topMargin_ = iiqFile_[curSensorPlus_]->imgdata.sizes.top_margin;
 
     // setup bitmap
     defBitmap_ = QBitmap(width_, height_);
 
-    // move the new one
-    iiqFile_ = std::move(iiqFile);
-
-    if (!calFile_.valid() || calFile_.getCalSerial() != iiqFile_->getPhaseOneSerial())
-        calFile_ = iiqFile_->getIIQCalFile();
-
-    iiqFile_->applyPhaseOneCorr(calFile_, applyDefectCorr_);
+    iiqFile_[curSensorPlus_]->applyPhaseOneCorr(calFile_, curSensorPlus_, applyDefectCorr_);
 
     delete[] rawData8_;
     rawData8_ = 0;
@@ -551,19 +551,43 @@ void IIQRawImage::setRawImage(std::unique_ptr<IIQFile>& iiqFile, double scale)
     if (scale != 0)
         scale_ = scale;
 
-    if (calFile_.valid())
+    if (calFile_.valid(curSensorPlus_))
         updateDefects();
 
     adjustSize();
     repaint();
+
+}
+
+void IIQRawImage::setRawImage(std::unique_ptr<IIQFile>& iiqFile, double scale)
+{
+    bool sensorPlus = iiqFile->isSensorPlus();
+    iiqFile_[sensorPlus] = std::move(iiqFile);
+    if (!calFile_.valid() || calFile_.getCalSerial() != iiqFile_[sensorPlus]->getPhaseOneSerial())
+    {
+        calFile_ = iiqFile_[sensorPlus]->getIIQCalFile();
+        if (iiqFile_[!sensorPlus] &&
+            iiqFile_[!sensorPlus]->getPhaseOneSerial() != calFile_.getCalSerial())
+        {
+            iiqFile_[!sensorPlus].reset();
+        }
+    }
+    else if (auto loadedCal = iiqFile_[sensorPlus]->getIIQCalFile(); calFile_.mergable(loadedCal))
+    {
+        calFile_.merge(loadedCal);
+    }
+
+    iiqFile_[sensorPlus]->applyPhaseOneCorr(calFile_, sensorPlus, applyDefectCorr_);
+
+    setSensorPlus(sensorPlus, scale);
 }
 
 void IIQRawImage::setDefectCorr(bool applyDefectCorr)
 {
-    if (calFile_.valid() && applyDefectCorr_ != applyDefectCorr)
+    if (calFile_.valid(curSensorPlus_) && applyDefectCorr_ != applyDefectCorr)
     {
         applyDefectCorr_ = applyDefectCorr;
-        iiqFile_->applyPhaseOneCorr(calFile_, applyDefectCorr_);
+        iiqFile_[curSensorPlus_]->applyPhaseOneCorr(calFile_, curSensorPlus_, applyDefectCorr_);
         updateRaw();
         repaint();
     }
@@ -571,16 +595,19 @@ void IIQRawImage::setDefectCorr(bool applyDefectCorr)
 
 void IIQRawImage::clearRawImage()
 {
-    if (!iiqFile_)
+    if (!iiqFile_[0] && !iiqFile_[1])
         return;
 
     width_ = 0;
     height_ = 0;
 
-    iiqFile_ = std::unique_ptr<IIQFile>();
+    iiqFile_[0] = std::unique_ptr<IIQFile>();
+    if (iiqFile_[1])
+        iiqFile_[1] = std::unique_ptr<IIQFile>();
     calFile_ = IIQCalFile();
     delete[] rawData8_;
     rawData8_ = 0;
+    curSensorPlus_ = false;
 
     repaint();
 }
@@ -588,49 +615,26 @@ void IIQRawImage::clearRawImage()
 void IIQRawImage::setDefectColour(QColor &colour)
 {
     defColour_ = colour;
-    if (calFile_.valid())
+    if (calFile_.valid(curSensorPlus_))
         repaint();
-}
-
-bool IIQRawImage::openCalFile(const IIQCalFile::TFileNameType& fileName)
-{
-    if (!iiqFile_)
-        return false;
-
-    IIQCalFile newCalFile(fileName);
-    if (!newCalFile.valid() || newCalFile.getCalSerial() != iiqFile_->getPhaseOneSerial())
-        return false;
-
-    calFile_.swap(newCalFile);
-
-    // update bitmap
-    updateDefectsBitmap();
-
-    // reset editing mode
-    setDefectSettingMode(M_NONE);
-
-    if (applyDefectCorr_)
-        iiqFile_->applyPhaseOneCorr(calFile_, applyDefectCorr_);
-
-    updateRaw();
-    repaint();
-
-    return true;
 }
 
 bool IIQRawImage::setCalFile(IIQCalFile& calFile)
 {
-    if (!iiqFile_)
+    if (!iiqFile_[false] && !iiqFile_[true])
         return false;
 
-    if (!calFile.valid() ||
-        calFile.getCalSerial() != iiqFile_->getPhaseOneSerial())
+    if (!calFile.valid() || calFile.getCalSerial() != getPhaseOneSerial())
         return false;
 
-    calFile_.swap(calFile);
+    if (calFile.fullyValid())
+        calFile_.swap(calFile);
+    else
+        // only load valid part
+        calFile_.swap(calFile, calFile.valid(true));
 
     // update raw
-    iiqFile_->applyPhaseOneCorr(calFile_, applyDefectCorr_);
+    iiqFile_[curSensorPlus_]->applyPhaseOneCorr(calFile_, curSensorPlus_, applyDefectCorr_);
     updateRaw();
 
     // update bitmap
@@ -647,11 +651,11 @@ bool IIQRawImage::setCalFile(IIQCalFile& calFile)
 
 void IIQRawImage::discardChanges()
 {
-    if (!iiqFile_)
+    if (!iiqFile_[curSensorPlus_])
         return;
 
-    calFile_ = iiqFile_->getIIQCalFile();
-    iiqFile_->applyPhaseOneCorr(calFile_, applyDefectCorr_);
+    calFile_.swap(iiqFile_[curSensorPlus_]->getIIQCalFile(), curSensorPlus_);
+    iiqFile_[curSensorPlus_]->applyPhaseOneCorr(calFile_, curSensorPlus_, applyDefectCorr_);
 
     updateRaw();
     updateDefects();
@@ -659,7 +663,7 @@ void IIQRawImage::discardChanges()
 
 void IIQRawImage::updateDefectsBitmap()
 {
-    if (pauseUpdates_ || !calFile_.valid())
+    if (pauseUpdates_ || !calFile_.valid(curSensorPlus_))
         return;
 
     defPointsCount_ = 0;
@@ -674,7 +678,7 @@ void IIQRawImage::updateDefectsBitmap()
 
     // paint point defects
     if (enablePoints_)
-        for (auto [col, row] : calFile_.getDefectPixels())
+        for (auto [col, row] : calFile_.getDefectPixels(curSensorPlus_))
         {
             ++defPointsCount_;
             if (row>=topMargin_ && col>=leftMargin_)
@@ -683,7 +687,7 @@ void IIQRawImage::updateDefectsBitmap()
 
     // paint column defects
     if (enableCols_)
-        for (auto col : calFile_.getDefectCols())
+        for (auto col : calFile_.getDefectCols(curSensorPlus_))
         {
             ++defColsCount_;
             if (col>=leftMargin_)
@@ -694,19 +698,19 @@ void IIQRawImage::updateDefectsBitmap()
 // attempts to autoremap points
 bool IIQRawImage::performAvgAutoRemap(double* avgValues, uint16_t* thresholds)
 {
-    if (!iiqFile_ || !calFile_.valid())
+    if (!iiqFile_[curSensorPlus_] || !calFile_.valid(curSensorPlus_))
         return false;
 
     bool remapped = false;
     for (uint16_t row=0; row<height_; ++row)
         for (uint16_t col=0; col<width_; ++col)
         {
-            EChannel channel = EChannel(iiqFile_->FC(row, col));
+            EChannel channel = EChannel(iiqFile_[curSensorPlus_]->FC(row, col));
             uint16_t threshold = thresholds[channel];
             if (threshold>0 &&
-                fabs(avgValues[channel]-iiqFile_->getRAW(row,col))>threshold)
+                fabs(avgValues[channel]-iiqFile_[curSensorPlus_]->getRAW(row,col))>threshold)
             {
-                if (calFile_.addDefPixel(col+leftMargin_, row+topMargin_))
+                if (calFile_.addDefPixel(col+leftMargin_, row+topMargin_, curSensorPlus_))
                     remapped = true;
             }
         }
@@ -715,7 +719,7 @@ bool IIQRawImage::performAvgAutoRemap(double* avgValues, uint16_t* thresholds)
     {
         if (applyDefectCorr_)
         {
-            iiqFile_->applyPhaseOneCorr(calFile_, applyDefectCorr_);
+            iiqFile_[curSensorPlus_]->applyPhaseOneCorr(calFile_, curSensorPlus_, applyDefectCorr_);
             updateRaw();
         }
         updateDefects();
@@ -730,10 +734,10 @@ bool IIQRawImage::performAdaptiveAutoRemap(uint16_t* thresholds,
                                            EChannel ch,
                                            uint32_t *counts)
 {
-    if (!iiqFile_)
+    if (!iiqFile_[curSensorPlus_])
         return false;
 
-    if (!countOnly && !calFile_.valid())
+    if (!countOnly && !calFile_.valid(curSensorPlus_))
         return false;
 
     if (countOnly && !counts)
@@ -765,19 +769,19 @@ bool IIQRawImage::performAdaptiveAutoRemap(uint16_t* thresholds,
             if (ch == C_ALL)
             {
                 median[C_RED]=median[C_GREEN]=median[C_BLUE]=median[C_GREEN2]=0;
-                extractChannel(C_RED, values, *iiqFile_, row, col, blockSize);
+                extractChannel(C_RED, values, *iiqFile_[curSensorPlus_], row, col, blockSize);
                 median[C_RED] = calc_median(values, chBlockCount);
-                extractChannel(C_GREEN, values, *iiqFile_, row, col, blockSize);
+                extractChannel(C_GREEN, values, *iiqFile_[curSensorPlus_], row, col, blockSize);
                 median[C_GREEN] = calc_median(values, chBlockCount);
-                extractChannel(C_BLUE, values, *iiqFile_, row, col, blockSize);
+                extractChannel(C_BLUE, values, *iiqFile_[curSensorPlus_], row, col, blockSize);
                 median[C_BLUE] = calc_median(values, chBlockCount);
-                extractChannel(C_GREEN2, values, *iiqFile_, row, col, blockSize);
+                extractChannel(C_GREEN2, values, *iiqFile_[curSensorPlus_], row, col, blockSize);
                 median[C_GREEN2] = calc_median(values, chBlockCount);
             }
             else
             {
                 median[ch]=0;
-                extractChannel(ch, values, *iiqFile_, row, col, blockSize);
+                extractChannel(ch, values, *iiqFile_[curSensorPlus_], row, col, blockSize);
                 median[ch] = calc_median(values, chBlockCount);
             }
 
@@ -787,16 +791,16 @@ bool IIQRawImage::performAdaptiveAutoRemap(uint16_t* thresholds,
             for (uint16_t rw=row; rw<lastRow; rw++)
                 for (uint16_t cl=col; cl<lastCol; cl++)
                 {
-                    EChannel channel = EChannel(iiqFile_->FC(rw, cl));
+                    EChannel channel = EChannel(iiqFile_[curSensorPlus_]->FC(rw, cl));
                     if (ch != C_ALL && ch!=channel)
                         continue;
 
                     uint16_t threshold = thresholds[channel];
-                    if (threshold>0 && abs(median[channel]-iiqFile_->getRAW(rw, cl))>threshold)
+                    if (threshold>0 && abs(median[channel]-iiqFile_[curSensorPlus_]->getRAW(rw, cl))>threshold)
                     {
                         if (countOnly)
                             counts[channel]++;
-                        else if (calFile_.addDefPixel(cl+leftMargin_, rw+topMargin_))
+                        else if (calFile_.addDefPixel(cl+leftMargin_, rw+topMargin_, curSensorPlus_))
                             remapped = true;
                     }
                 }
@@ -807,7 +811,7 @@ bool IIQRawImage::performAdaptiveAutoRemap(uint16_t* thresholds,
     {
         if (applyDefectCorr_)
         {
-            iiqFile_->applyPhaseOneCorr(calFile_, applyDefectCorr_);
+            iiqFile_[curSensorPlus_]->applyPhaseOneCorr(calFile_, curSensorPlus_, applyDefectCorr_);
             updateRaw();
         }
         updateDefects();
@@ -837,21 +841,21 @@ void IIQRawImage::enableDefCols(bool enable)
 // erase enabled defects
 void IIQRawImage::eraseEnabledDefects()
 {
-    if (!calFile_.valid())
+    if (!calFile_.valid(curSensorPlus_))
         return;
 
     if (enablePoints_)
-        calFile_.removeDefPixel(-1, -1);
+        calFile_.removeDefPixel(-1, -1, curSensorPlus_);
 
     if (enableCols_)
-        calFile_.removeDefCol(-1);
+        calFile_.removeDefCol(-1, curSensorPlus_);
 
     updateDefects();
 }
 
 void IIQRawImage::updateRaw()
 {
-    if (pauseUpdates_ || !iiqFile_ || !rawData8_)
+    if (pauseUpdates_ || !iiqFile_[curSensorPlus_] || !rawData8_)
         return;
 
     #define TO_8_BIT(val) from12To8[(val)]
@@ -870,17 +874,21 @@ void IIQRawImage::updateRaw()
                     --col;
 
                 uint16_t pixel[C_ALL] = { 0, 0, 0, 0 };
-                pixel[iiqFile_->FC(row, col)] = getRawDataEnabled(iiqFile_->FC(row, col),row,col);
-                pixel[iiqFile_->FC(row, col+1)] = getRawDataEnabled(iiqFile_->FC(row, col+1),row,col+1);
-                pixel[iiqFile_->FC(row+1, col)] = getRawDataEnabled(iiqFile_->FC(row+1, col),row+1,col);
-                pixel[iiqFile_->FC(row+1, col+1)] = getRawDataEnabled(iiqFile_->FC(row+1, col+1),row+1,col+1);
+                pixel[iiqFile_[curSensorPlus_]->FC(row, col)] =
+                    getRawDataEnabled(iiqFile_[curSensorPlus_]->FC(row, col),row,col);
+                pixel[iiqFile_[curSensorPlus_]->FC(row, col+1)] =
+                    getRawDataEnabled(iiqFile_[curSensorPlus_]->FC(row, col+1),row,col+1);
+                pixel[iiqFile_[curSensorPlus_]->FC(row+1, col)] =
+                    getRawDataEnabled(iiqFile_[curSensorPlus_]->FC(row+1, col),row+1,col);
+                pixel[iiqFile_[curSensorPlus_]->FC(row+1, col+1)] =
+                    getRawDataEnabled(iiqFile_[curSensorPlus_]->FC(row+1, col+1),row+1,col+1);
 
                 uint8_t* row0 = rawData8_ + (row*width_ + col)*3;
                 uint8_t* row1 = row0 + width_*3;
 
-                row0[0] = row0[3] = row1[0] = row1[3] = TO_8_BIT(pixel[C_RED]);
-                row0[1] = row0[4] = row1[1] = row1[4] = TO_8_BIT(((uint32_t)pixel[C_GREEN] + pixel[C_GREEN])>>1);
-                row0[2] = row0[5] = row1[2] = row1[5] = TO_8_BIT(pixel[C_BLUE]);
+                row0[0]=row0[3]=row1[0]=row1[3]=TO_8_BIT(pixel[C_RED]);
+                row0[1]=row0[4]=row1[1]=row1[4]=TO_8_BIT(((uint32_t)pixel[C_GREEN] + pixel[C_GREEN])>>1);
+                row0[2]=row0[5]=row1[2]=row1[5]=TO_8_BIT(pixel[C_BLUE]);
             }
         });
     }
@@ -891,7 +899,7 @@ void IIQRawImage::updateRaw()
         {
             for (uint16_t col=0; col<width_; ++col)
             {
-                EChannel channel = EChannel(iiqFile_->FC(row, col));
+                EChannel channel = EChannel(iiqFile_[curSensorPlus_]->FC(row, col));
                 uint8_t* pixel = rawData8_ + (row*width_ + col)*3;
                 pixel[0] = pixel[1] = pixel[2] = 0;
                 if (chnlEnabled[channel])
@@ -909,7 +917,7 @@ void IIQRawImage::updateRaw()
         {
             for (uint16_t col=0; col<width_; ++col)
             {
-                EChannel channel = EChannel(iiqFile_->FC(row, col));
+                EChannel channel = EChannel(iiqFile_[curSensorPlus_]->FC(row, col));
                 uint8_t* pixel = rawData8_ + (row*width_ + col)*3;
                 if (chnlEnabled[channel])
                 {

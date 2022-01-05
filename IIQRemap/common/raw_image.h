@@ -107,7 +107,8 @@ class IIQRawImage : public QLabel
     uint16_t topMargin_;
     uint16_t leftMargin_;
 
-    std::unique_ptr<IIQFile> iiqFile_;   // rawData_;
+    bool curSensorPlus_;
+    std::unique_ptr<IIQFile> iiqFile_[2];   // rawData_;
     IIQCalFile calFile_;
     uint8_t* rawData8_;
 
@@ -149,31 +150,36 @@ public:
 
     inline bool isDefectPoint(int row, int col)
     {
-        return calFile_.valid()
-                    ? calFile_.isDefCol(col+leftMargin_) ||
-                      calFile_.isDefPixel(col+leftMargin_, row+topMargin_)
+        return calFile_.valid(curSensorPlus_)
+                    ? calFile_.isDefCol(col+leftMargin_, curSensorPlus_) ||
+                      calFile_.isDefPixel(col+leftMargin_, row+topMargin_, curSensorPlus_)
                     : false;
     }
 
     inline uint16_t getRawValue(int row, int col)
     {
-        return iiqFile_ ? iiqFile_->getRAW(row, col) : 0;
+        return iiqFile_[curSensorPlus_] ? iiqFile_[curSensorPlus_]->getRAW(row, col) : 0;
     }
 
     inline EChannel getRawColor(int row, int col)
     {
-        return EChannel(iiqFile_? iiqFile_->FC(row, col) : 0);
+        return EChannel(iiqFile_[curSensorPlus_] ? iiqFile_[curSensorPlus_]->FC(row, col) : 0);
     }
 
     // raw image setters
     void setRawImage(std::unique_ptr<IIQFile>& iiqFile, double scale);
     void clearRawImage();
-    bool rawLoaded() { return (bool)iiqFile_; }
-    bool hasCalFile() { return calFile_.valid(); }
+    bool rawLoaded() { return (bool)iiqFile_[curSensorPlus_]; }
+    bool rawLoaded(bool sensorPlus) { return (bool)iiqFile_[sensorPlus]; }
+    bool hasCalFile() { return calFile_.valid(curSensorPlus_); }
     IIQCalFile& getCalFile() { return calFile_; }
-    std::unique_ptr<IIQFile>& getRawImage() { return iiqFile_; }
+    std::unique_ptr<IIQFile>& getRawImage() { return iiqFile_[curSensorPlus_]; }
+    std::unique_ptr<IIQFile>& getRawImage(bool sensorPlus) { return iiqFile_[sensorPlus]; }
 
-    bool openCalFile(const IIQCalFile::TFileNameType& fileName);
+    void setSensorPlus(bool sensorPlus, double scale);
+    bool getSensorPlus() { return curSensorPlus_; };
+    bool supportsSensorPlus() { return calFile_.hasSensorPlus(); }
+
     bool setCalFile(IIQCalFile& calFile);
     void discardChanges();
     void updateDefects()
@@ -249,12 +255,19 @@ private:
 
     inline uint16_t getRawDataEnabled(uint8_t ch, int row, int col)
     {
-        return chnlEnabled[ch] ? chnlCurves_[ch][iiqFile_->getRAW(row, col)] : 0;
+        return chnlEnabled[ch] ? chnlCurves_[ch][iiqFile_[curSensorPlus_]->getRAW(row, col)] : 0;
+    }
+
+    inline const std::string getPhaseOneSerial()
+    {
+        return iiqFile_[0] ? iiqFile_[0]->getPhaseOneSerial()
+                           : (iiqFile_[1] ? iiqFile_[1]->getPhaseOneSerial()
+                                          : std::string());
     }
 
     inline uint16_t getRawData(uint8_t ch, uint16_t row, uint16_t col)
     {
-        return chnlCurves_[ch][iiqFile_->getRAW(row, col)];
+        return chnlCurves_[ch][iiqFile_[curSensorPlus_]->getRAW(row, col)];
     }
 
     void calcViewpointOffsets()

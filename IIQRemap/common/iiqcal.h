@@ -44,7 +44,7 @@ public:
     using TDefCols = std::set<int>;
 
     // Initialisers/destructors
-    IIQCalFile() : convEndian_(false), hasChanges_(false) {};
+    IIQCalFile() : convEndian_(false), hasChanges_{false,false}, hasSensorPlus_(false) {};
     IIQCalFile(const uint8_t* data, const size_t size);
     IIQCalFile(const TFileNameType& fileName);
     ~IIQCalFile() = default;
@@ -55,66 +55,90 @@ public:
 
     // Swapping
     void swap(IIQCalFile& from);
+    void swap(IIQCalFile& from, bool sensorPlus);
+    void swap(IIQCalFile&& from, bool sensorPlus);
+    void merge(IIQCalFile& from) { swap(from, hasSensorPlus_ && !valid(true)); }
 
     // Cal files are the same when serial matches
     bool operator==(const IIQCalFile &cal) const
-    { return calSerial_ == cal.calSerial_; }
+        { return calSerial_ == cal.calSerial_; }
+
+    // Files are mergable when they are for the same serial
+    // and have opposite parts present
+    bool mergable(const IIQCalFile &cal) const
+        { return calSerial_ == cal.calSerial_ && hasSensorPlus_ &&
+                 valid(false) != cal.valid(false) &&
+                 valid(true) != cal.valid(true) &&
+                 valid(false) != valid(true); }
 
     // Save changes back to the file (overrides existing file)
     bool saveCalFile();
-    bool saveToData(std::vector<uint8_t>& calData) const { return rebuildCalFileData(calData); }
+    bool saveToData(std::vector<uint8_t>& calData, bool sensorPlus) const
+        { return rebuildCalFileData(calData, sensorPlus); }
 
     // Reset any changes and repopulate defects from last saved
-    void reset() { parseCalFileData(); }
+    void reset() { parseCalFileData(false); parseCalFileData(true); }
 
     // Getters for cal data
-    const std::string& getCalSerial() const   { return calSerial_; }
-    const TFileNameType& getCalFileName() const    { return calFileName_; }
-    const TDefPixels& getDefectPixels() const { return defPixels_; }
-    const TDefCols& getDefectCols() const     { return defCols_; }
+    const std::string& getCalSerial() const
+        { return calSerial_; }
+    const TFileNameType& getCalFileName() const
+        { return calFileName_; }
+    const TDefPixels& getDefectPixels(bool sensorPlus) const
+        { return defPixels_[sensorPlus]; }
+    const TDefCols& getDefectCols(bool sensorPlus) const
+        { return defCols_[sensorPlus]; }
 
     // Setting file for saving
     void setCalFileName(const TFileNameType& fileName) { calFileName_ = fileName; }
 
     // Defect checks
-    bool isDefPixel(int col, int row) const { return defPixels_.find({col, row}) != defPixels_.end(); }
-    bool isDefCol(int col) const { return defCols_.find(col) != defCols_.end(); }
+    bool isDefPixel(int col, int row, bool sensorPlus) const
+        { return defPixels_[sensorPlus].find({col, row}) != defPixels_[sensorPlus].end(); }
+    bool isDefCol(int col, bool sensorPlus) const
+        { return defCols_[sensorPlus].find(col) != defCols_[sensorPlus].end(); }
 
     // Defect modifiers
-    bool addDefPixel(int col, int row)
-    { return defPixels_.emplace(col, row).second ? hasChanges_=true : false; }
-    bool addDefCol(int col)
-    { return defCols_.emplace(col).second ? hasChanges_=true : false; }
+    bool addDefPixel(int col, int row, bool sensorPlus)
+        { return defPixels_[sensorPlus].emplace(col, row).second ? hasChanges_[sensorPlus]=true : false; }
+    bool addDefCol(int col, bool sensorPlus)
+        { return defCols_[sensorPlus].emplace(col).second ? hasChanges_[sensorPlus]=true : false; }
 
     // Pixel removal:
     //  - if row is negative, remove all pixels with that col
     //  - if col is negative, clear all pixels
-    bool removeDefPixel(int col, int row);
+    bool removeDefPixel(int col, int row, bool sensorPlus);
 
     // Column removal:
     //  - if col is negative, clear all cols
-    bool removeDefCol(int col);
+    bool removeDefCol(int col, bool sensorPlus);
 
-    bool hasUnsavedChanges() const { return hasChanges_; }
-    bool valid() const { return !calTags_.empty(); }
+    bool hasUnsavedChanges() const { return hasChanges_[0] || hasChanges_[hasSensorPlus_]; }
+    bool valid(bool sensorPlus) const { return !calTags_[sensorPlus].empty(); }
+    bool valid() const { return valid(false) || valid(hasSensorPlus_); }
+    bool fullyValid() const { return valid(false) && valid(hasSensorPlus_); }
+
+    bool hasSensorPlus() const { return hasSensorPlus_; }
 
     // Access to raw file data
-    const std::vector<uint8_t>& getCalFileData() const { return calFileData_; };
+    const std::vector<uint8_t>& getCalFileData(bool sensorPlus) const { return calFileData_[sensorPlus]; };
 
 private:
     // private functions
-    void parseCalFileData();
-    bool rebuildCalFileData(std::vector<uint8_t>& calFileData) const;
+    void initCalData(const uint8_t* data, const size_t size);
+    void parseCalFileData(bool sensorPlus);
+    bool rebuildCalFileData(std::vector<uint8_t>& calFileData, bool sensorPlus) const;
 
     // data members
-    TDefPixels defPixels_;
-    TDefCols defCols_;
+    TDefPixels defPixels_[2];
+    TDefCols defCols_[2];
     std::string calSerial_;
     TFileNameType calFileName_;
-    std::vector<uint8_t> calFileData_;
-    std::set<uint32_t> calTags_;
+    std::vector<uint8_t> calFileData_[2];
+    std::set<uint32_t> calTags_[2];
+    bool hasChanges_[2];
     bool convEndian_;
-    bool hasChanges_;
+    bool hasSensorPlus_;
 };
 
 // IIQ raw file class
@@ -130,8 +154,10 @@ public:
 
     IIQCalFile getIIQCalFile();
 
+    bool isSensorPlus();
+
     // Applies Phase One corrections
-    void applyPhaseOneCorr(const IIQCalFile& calFile, bool applyDefects = true);
+    void applyPhaseOneCorr(const IIQCalFile& calFile, bool sensorPlus, bool applyDefects);
 
     const std::string getPhaseOneSerial()
     {

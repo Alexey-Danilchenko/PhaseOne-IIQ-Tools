@@ -42,7 +42,11 @@ this can be leveraged to amend existing defects (add new defected pixels and col
 defective etc). This is the point of this utility - to manage defects and produce an amended calibration file for
 uploading into digital back.
 
-## Remap procedure for Phase One Pnn+ backs:
+Digital backs with Sensor+ use two calibrations: one for standard resolution and one for Sensor+ reduced resolution mode.
+For those backs both type of raw files (at least one for each mode standard and Sensor+) are needed to create full
+calibration file.
+
+## Remap procedure for Phase One Pnn+/IQnnn backs:
 
 1) On Phase One Pnn/Pnn+ digital backs based on Kodak senosrs the remap generally is better performed on dark frames
 (where people can see distinct defective columns when pulling the shadows or using high ISOs which on those digital
@@ -52,27 +56,34 @@ minutes exposure (to trigger long exposure mode). To improve stability of a colu
 combined - the IIQ Remap software can stack up to 7 raw files in a median stack leaving only stable defects in (this
 is most useful to detect bad columns).
 
-2) Load up raw file or several raw files in a median stack
+2) Some Pnn/Pnn+ and all of IQnnn digital backs support Sensor+ with reduced resolution. For those backs both modes
+need to be remapped and the above procedure for getting dark frames needs to happen for both standard and Sensor+ mode.
+At the very least raw file for each mode needs to be loaded to create correct two-parts calibration file. This needs
+to happen even if only one mode needs to be remapped. Incomplete calibration file can be written but should not be
+uploaded to digital back.
 
-3) You can always create a back up calibration file by loading up raw IIQ File and saving calibration immediately -
-it will just save the calibration file from IIQ.
+3) Load up raw file or several raw files in a median stack. For for digital backs with Sensor+, loaded file will
+be made active and highlighted.
 
-4) **Columns remap:** adjust the exposure in a raw display tab to make the defects visible, use composite or
+4) You can always create a back up calibration file by loading up raw IIQ File (or two - for digital backs with
+Sensor+) and saving calibration immediately - it will just save the calibration file from IIQ.
+
+5) **Columns remap:** adjust the exposure in a raw display tab to make the defects visible, use composite or
 grayscale raw display mode, switch on the column remapping mode and mark the defective columns with the mouse.
 I strongly recommend using grayscale raw display modes for manual dark frame based remaps.
 
-5) **Points remap:** these can also be done manually but it would be more effective to use "Apply defect corr."
+6) **Points remap:** these can also be done manually but it would be more effective to use "Apply defect corr."
 and then use adaptive auto remap with selected thresholds (more details below in the application help).
 
-6) You can always validate the remap by selecting "Apply defect corr." (deselect it first if it was selected
+7) You can always validate the remap by selecting "Apply defect corr." (deselect it first if it was selected
 to refresh raw display) and untick all defects in defect selection section to see raw file clearly.
 
-7) Repeat the procedure by loading abother dark raw or stack of them for the same digital back (remapped
+8) Repeat the procedure by loading abother dark raw or stack of them for the same digital back (remapped
 defects will be preserved across the load).
 
-8) Save the calibration file when satisfied (or do it intermediately whilst progressing with remap).
+9) Save the calibration file when satisfied (or do it intermediately whilst progressing with remap).
 
-9) Use Phase One Firmware Update utility to upload calibration file to your back and enjoy the results.
+10) Use Phase One Firmware Update utility to upload calibration file to your back and enjoy the results.
 
 Of course the above is only a recommended procedure. You can do manual remap with just about any file
 (if the defects can be clearly seen). The automatic remaps of defective points however will only work
@@ -108,6 +119,14 @@ The remap mode buttons are all mutually exclusive and will switch on the appropr
 mode when the columns or points may be selected with mouse cursor and either set or unset
 as defective. The selected mode has to correspond to defects selection so it will be
 synchronised with those settings.
+
+If digital back supports Sensor+ two mutually exclusive buttons will be shown here to allow
+switching between standard and Sensor+ raw files and calibration file portion. If one of the
+buttons is disabled then it means that appropriate raw file taken in that mode (standard or
+Sensor+) has not been loaded yet. Active button remains pressed and highlighted to indicate
+which mode currently being worked in. Pressing the unselected button will switch the UI to
+that file and calibration file portion, update all the stats and recalculate all the
+thresholds (and this operation may take some time).
 
 #### Status bar
 

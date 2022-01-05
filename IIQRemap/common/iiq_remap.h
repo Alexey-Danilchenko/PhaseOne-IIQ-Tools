@@ -255,6 +255,8 @@ private Q_SLOTS:
 
     void loadRaw();
 
+    void sensorPlusSelected(int id);
+
     void autoRemap();
     void calculateThresholds();
     void deleteShownDefects();

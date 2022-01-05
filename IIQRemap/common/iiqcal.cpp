@@ -42,12 +42,30 @@
 //
 #define IIQ_BIGENDIAN      0x4d4d4d4d
 #define IIQ_LITTLEENDIAN   0x49494949
+#define CAL_FOOTER_MAGIC   0x504F4331
 
 struct TIIQHeader
 {
     uint32_t iiqMagic;   // Same as TIFF magic but 32bit
     uint32_t version;
     uint32_t dirOffset;
+};
+
+struct TSensorPlusFooter
+{
+    uint32_t calDataOffset;   // always zero
+    uint32_t calSize;         // always size of the first or the only calibration
+    uint32_t calNumber;       // calibration number (1 for the std, 2 for Sensor+)
+    uint32_t totalCals;       // total number of calibrations (1 for the std, 2 for Sensor+)
+    uint32_t modTimestamp;    // last modification timestamp
+    uint32_t calFooterMagic;  // calibration footer magic 'POC1'
+};
+
+struct TSensorPlusTOC
+{
+    uint32_t calSize[2];  // each calibration size
+    uint32_t totalCals;   // total number of calibrations - always
+                          //   2 for Sensor+ sensors
 };
 
 struct TIiqCalTagEntry
@@ -137,15 +155,14 @@ uint64_t convEndian64(uint64_t uValue, bool convert)
 
 // constructors and assignements
 IIQCalFile::IIQCalFile(const uint8_t* data, const size_t size)
-    : convEndian_(false), hasChanges_(false)
+    : hasChanges_{false,false}, convEndian_(false), hasSensorPlus_(false)
 {
-    calFileData_.resize(size);
-    std::memcpy(calFileData_.data(), data, size);
-    parseCalFileData();
+    initCalData(data, size);
 }
 
 IIQCalFile::IIQCalFile(const IIQCalFile::TFileNameType& fileName)
-    : calFileName_(fileName), convEndian_(false), hasChanges_(false)
+    : calFileName_(fileName), hasChanges_{false,false},
+      convEndian_(false), hasSensorPlus_(false)
 {
     if (fileName.empty())
         return;
@@ -160,11 +177,9 @@ IIQCalFile::IIQCalFile(const IIQCalFile::TFileNameType& fileName)
             if (auto *file = std::fopen(calFileName_.c_str(), "rb"))
 #endif
             {
-                calFileData_.resize(size);
-                if (std::fread(calFileData_.data(), 1, size, file) == size)
-                    parseCalFileData();
-                else
-                    calFileData_.resize(0);
+                std::vector<uint8_t> calFile(size);
+                if (std::fread(calFile.data(), 1, size, file) == size)
+                    initCalData(calFile.data(), size);
                 std::fclose(file);
             }
         }
@@ -180,27 +195,35 @@ IIQCalFile::IIQCalFile(const IIQCalFile::TFileNameType& fileName)
 IIQCalFile& IIQCalFile::operator=(const IIQCalFile& from)
 {
     calFileName_ = from.calFileName_;
-    calFileData_ = from.calFileData_;
-    calTags_ = from.calTags_;
-    calSerial_ = from.calSerial_;
-    defPixels_ = from.defPixels_;
-    defCols_ = from.defCols_;
     convEndian_ = from.convEndian_;
-    hasChanges_ = from.hasChanges_;
+    hasSensorPlus_ = from.hasSensorPlus_;
+    calSerial_ = from.calSerial_;
+    for (int i=0; i<2; ++i)
+    {
+        calFileData_[i] = from.calFileData_[i];
+        calTags_[i] = from.calTags_[i];
+        defPixels_[i] = from.defPixels_[i];
+        defCols_[i] = from.defCols_[i];
+        hasChanges_[i] = from.hasChanges_[i];
+    }
 
     return *this;
 }
 
 IIQCalFile& IIQCalFile::operator=(const IIQCalFile&& from)
 {
-    defPixels_ = std::move(from.defPixels_);
-    defCols_ = std::move(from.defCols_);
-    calTags_ = std::move(from.calTags_);
-    calSerial_ = std::move(from.calSerial_);
     calFileName_ = std::move(from.calFileName_);
-    calFileData_ = std::move(from.calFileData_);
     convEndian_ = from.convEndian_;
-    hasChanges_ = from.hasChanges_;
+    hasSensorPlus_ = from.hasSensorPlus_;
+    calSerial_ = std::move(from.calSerial_);
+    for (int i=0; i<2; ++i)
+    {
+        defPixels_[i] = std::move(from.defPixels_[i]);
+        defCols_[i] = std::move(from.defCols_[i]);
+        calTags_[i] = std::move(from.calTags_[i]);
+        calFileData_[i] = std::move(from.calFileData_[i]);
+        hasChanges_[i] = from.hasChanges_[i];
+    }
 
     return *this;
 }
@@ -208,59 +231,75 @@ IIQCalFile& IIQCalFile::operator=(const IIQCalFile&& from)
 void IIQCalFile::swap(IIQCalFile& from)
 {
     calFileName_.swap(from.calFileName_);
-    calFileData_.swap(from.calFileData_);
-    calTags_.swap(from.calTags_);
     calSerial_.swap(from.calSerial_);
-    defPixels_.swap(from.defPixels_);
-    defCols_.swap(from.defCols_);
     std::swap(convEndian_, from.convEndian_);
-    std::swap(hasChanges_, from.hasChanges_);
+    std::swap(hasSensorPlus_, from.hasSensorPlus_);
+    swap(from, false);
+    swap(from, true);
+}
+
+void IIQCalFile::swap(IIQCalFile& from, bool sensorPlus)
+{
+    calFileData_[sensorPlus].swap(from.calFileData_[sensorPlus]);
+    calTags_[sensorPlus].swap(from.calTags_[sensorPlus]);
+    defPixels_[sensorPlus].swap(from.defPixels_[sensorPlus]);
+    defCols_[sensorPlus].swap(from.defCols_[sensorPlus]);
+    std::swap(hasChanges_[sensorPlus], from.hasChanges_[sensorPlus]);
+}
+
+void IIQCalFile::swap(IIQCalFile&& from, bool sensorPlus)
+{
+    calFileData_[sensorPlus].swap(from.calFileData_[sensorPlus]);
+    calTags_[sensorPlus].swap(from.calTags_[sensorPlus]);
+    defPixels_[sensorPlus].swap(from.defPixels_[sensorPlus]);
+    defCols_[sensorPlus].swap(from.defCols_[sensorPlus]);
+    std::swap(hasChanges_[sensorPlus], from.hasChanges_[sensorPlus]);
 }
 
 // Pixel removal
 //  - if row is negative, remove all pixels with that col
 //  - if col is negative, clear all pixels
-bool IIQCalFile::removeDefPixel(int col, int row)
+bool IIQCalFile::removeDefPixel(int col, int row, bool sensorPlus)
 {
     bool deleted = false;
     if (col < 0)
     {
-        defPixels_.clear();
+        defPixels_[sensorPlus].clear();
         deleted = true;
     }
     else if (row < 0)
     {
-        auto it = defPixels_.lower_bound({col, row});
-        while (it != defPixels_.end() && it->first == col)
+        auto it = defPixels_[sensorPlus].lower_bound({col, row});
+        while (it != defPixels_[sensorPlus].end() && it->first == col)
         {
             deleted = true;
-            it = defPixels_.erase(it);
+            it = defPixels_[sensorPlus].erase(it);
         }
     }
     else
-        deleted = defPixels_.erase({col, row}) == 1;
+        deleted = defPixels_[sensorPlus].erase({col, row}) == 1;
 
     if (deleted)
-        hasChanges_ = true;
+        hasChanges_[sensorPlus] = true;
 
     return deleted;
 }
 
 // Column removal
 //  - if col is negative, clear all cols
-bool IIQCalFile::removeDefCol(int col)
+bool IIQCalFile::removeDefCol(int col, bool sensorPlus)
 {
     bool deleted = false;
     if (col < 0)
     {
-        defCols_.clear();
+        defCols_[sensorPlus].clear();
         deleted = true;
     }
     else
-        deleted = defCols_.erase(col) == 1;
+        deleted = defCols_[sensorPlus].erase(col) == 1;
 
     if (deleted)
-        hasChanges_ = true;
+        hasChanges_[sensorPlus] = true;
 
     return deleted;
 }
@@ -271,16 +310,23 @@ bool IIQCalFile::saveCalFile()
     if (calFileName_.empty() || !valid())
         return false;
 
-    bool success = false;
-    if (hasChanges_)
-    {
-        // first remove duplicate pixels
-        for (auto col: defCols_)
-            removeDefPixel(col, -1);
+    bool success = true;
 
-        // merge defects back into binary
-        success = rebuildCalFileData(calFileData_);
+    for (int i=0; success && i<=(int)hasSensorPlus_; ++i)
+    {
+        if (hasChanges_[i])
+        {
+            // first remove duplicate pixels
+            for (auto col: defCols_[i])
+                removeDefPixel(col, -1, i);
+
+            // merge defects back into binary
+            success = success && rebuildCalFileData(calFileData_[i], i);
+        }
     }
+
+    if (!success)
+        return success;
 
     // save binary
 #if defined(WIN32) || defined(_WIN32)
@@ -289,37 +335,120 @@ bool IIQCalFile::saveCalFile()
     if (auto *file = std::fopen(calFileName_.c_str(), "wb"))
 #endif
     {
-        success = std::fwrite(calFileData_.data(), 1, calFileData_.size(), file)
-                        == calFileData_.size();
+        if (!calFileData_[0].empty())
+            success = std::fwrite(calFileData_[0].data(), 1, calFileData_[0].size(), file)
+                            == calFileData_[0].size();
+        if (success && hasSensorPlus_)
+        {
+            // write sensor plus calibration if any
+            if (!calFileData_[1].empty())
+                success = std::fwrite(calFileData_[1].data(), 1, calFileData_[1].size(), file)
+                                == calFileData_[1].size();
+
+            // build and write footer
+            if (success && (!calFileData_[0].empty() || !calFileData_[1].empty()))
+            {
+                bool hasTOC = false;
+                if (!calFileData_[0].empty() && !calFileData_[1].empty())
+                {
+                    // write TOC
+                    TSensorPlusTOC spTOC;
+                    spTOC.calSize[0] = convEndian32(calFileData_[0].size(), convEndian_);
+                    spTOC.calSize[1] = convEndian32(calFileData_[1].size(), convEndian_);
+                    spTOC.totalCals = convEndian32(2, convEndian_);
+                    success = std::fwrite(&spTOC, 1, sizeof(spTOC), file) == sizeof(spTOC);
+                    hasTOC = true;
+                }
+
+                if (success)
+                {
+                    // write footer
+                    TSensorPlusFooter footer;
+                    footer.calDataOffset = 0;
+                    footer.calSize = convEndian32(calFileData_[calFileData_[0].empty()].size(), convEndian_);
+                    footer.calFooterMagic = convEndian32(CAL_FOOTER_MAGIC, convEndian_);
+                    footer.calNumber = convEndian32((uint32_t)calFileData_[0].empty() + 1, convEndian_);
+                    footer.totalCals = convEndian32(hasTOC ? 2 : 1, convEndian_);
+                    footer.modTimestamp = convEndian32((uint32_t)std::time(nullptr), convEndian_);
+                    success = std::fwrite(&footer, 1, sizeof(footer), file) == sizeof(footer);
+                }
+            }
+        }
+
         std::fclose(file);
     }
 
     if (success)
-        hasChanges_ = false;
+        hasChanges_[0] = hasChanges_[1] = false;
 
     return success;
 }
 
-// private function parsing cal file
-void IIQCalFile::parseCalFileData()
+void IIQCalFile::initCalData(const uint8_t* data, const size_t size)
 {
-    defPixels_.clear();
-    defCols_.clear();
     calSerial_.clear();
-    calTags_.clear();
+    auto dataSize = size;
+    bool sensorPlus = false;
 
-    if (calFileData_.size() < sizeof(TIIQHeader))
+    // check for sensor plus
+    if (size > sizeof(TSensorPlusFooter) && size > sizeof(TIIQHeader))
+    {
+        const TIIQHeader* hdr = (TIIQHeader*)data;
+        convEndian_ = (hdr->iiqMagic == IIQ_BIGENDIAN);
+        const TSensorPlusFooter* footer =
+            (TSensorPlusFooter*)(data+size-sizeof(TSensorPlusFooter));
+        if (convEndian32(footer->calFooterMagic, convEndian_) == CAL_FOOTER_MAGIC)
+        {
+            hasSensorPlus_ = true;
+            size_t dataSize0 = convEndian32(footer->calSize, convEndian_);
+            if (convEndian32(footer->totalCals, convEndian_) == 2 &&
+                size > sizeof(TSensorPlusFooter)+sizeof(TSensorPlusTOC))
+            {
+                TSensorPlusTOC* spTOC = (TSensorPlusTOC*)((uint8_t*)footer-sizeof(TSensorPlusTOC));
+                // process sensor+ data
+                dataSize0 = convEndian32(spTOC->calSize[0], convEndian_);
+                size_t dataSize1 = convEndian32(spTOC->calSize[1], convEndian_);
+                if (dataSize0 + dataSize1 < size)
+                {
+                    calFileData_[1].resize(dataSize1);
+                    std::memcpy(calFileData_[1].data(), data+dataSize0, dataSize1);
+                    parseCalFileData(true);
+                }
+            }
+            else
+            {
+                sensorPlus = convEndian32(footer->calNumber, convEndian_) == 2;
+            }
+            // to process std cal file part - set the real dataSize
+            if (dataSize0 < size)
+                dataSize = dataSize0;
+        }
+    }
+
+    calFileData_[sensorPlus].resize(dataSize);
+    std::memcpy(calFileData_[sensorPlus].data(), data, dataSize);
+    parseCalFileData(sensorPlus);
+}
+
+// private function parsing cal file
+void IIQCalFile::parseCalFileData(bool sensorPlus)
+{
+    defPixels_[sensorPlus].clear();
+    defCols_[sensorPlus].clear();
+    calTags_[sensorPlus].clear();
+
+    if (calFileData_[sensorPlus].size() < sizeof(TIIQHeader))
         return;
 
-    const TIIQHeader* hdr = (TIIQHeader*)calFileData_.data();
+    const TIIQHeader* hdr = (TIIQHeader*)calFileData_[sensorPlus].data();
     convEndian_ = (hdr->iiqMagic == IIQ_BIGENDIAN);
     uint32_t ifdOffset = convEndian32(hdr->dirOffset, convEndian_);
 
-    if (calFileData_.size() < ifdOffset+8+sizeof(TIiqCalTagEntry))
+    if (calFileData_[sensorPlus].size() < ifdOffset+8+sizeof(TIiqCalTagEntry))
         return;
 
-    const uint8_t* data = (uint8_t*)calFileData_.data();
-    const uint8_t* end = data + calFileData_.size();
+    const uint8_t* data = (uint8_t*)calFileData_[sensorPlus].data();
+    const uint8_t* end = data + calFileData_[sensorPlus].size();
 
     uint32_t entries = convEndian32(*(uint32_t*)(data+ifdOffset), convEndian_);
     const TIiqCalTagEntry* tagEntry = (TIiqCalTagEntry*)(data+ifdOffset+8);
@@ -333,7 +462,7 @@ void IIQCalFile::parseCalFileData()
         const uint8_t* tagData = data + convEndian32(tagEntry[i].data, convEndian_);
         uint32_t sizeBytes = convEndian32(tagEntry[i].sizeBytes, convEndian_);
 
-        calTags_.emplace(tag);
+        calTags_[sensorPlus].emplace(tag);
 
         if (sizeBytes == 0)
         {
@@ -358,35 +487,36 @@ void IIQCalFile::parseCalFileData()
                     case DEF_COL_2:
                     case DEF_COL_3:
                     case DEF_COL_4:
-                        addDefCol(convEndian16(defect[j].col, convEndian_));
+                        addDefCol(convEndian16(defect[j].col, convEndian_), sensorPlus);
                         break;
                     case DEF_PIXEL:
                         addDefPixel(convEndian16(defect[j].col, convEndian_),
-                                    convEndian16(defect[j].row, convEndian_));
+                                    convEndian16(defect[j].row, convEndian_),
+                                    sensorPlus);
                         break;
                 }
         }
     }
 
-    hasChanges_ = false;
+    hasChanges_[sensorPlus] = false;
 }
 
-bool IIQCalFile::rebuildCalFileData(std::vector<uint8_t>& calFileData) const
+bool IIQCalFile::rebuildCalFileData(std::vector<uint8_t>& calFileData, bool sensorPlus) const
 {
     std::vector<uint8_t> newCalData;
-    newCalData.reserve(calFileData_.size());
+    newCalData.reserve(calFileData_[sensorPlus].size());
 
     // copy header
     newCalData.resize(sizeof(TIIQHeader)+8);
-    std::memcpy(newCalData.data(), calFileData_.data(), sizeof(TIIQHeader));
+    std::memcpy(newCalData.data(), calFileData_[sensorPlus].data(), sizeof(TIIQHeader));
 
     // mod time
     uint32_t modTime = (uint32_t)std::time(nullptr);
 
     // populate defect list
-    std::vector<TDefectEntry> newDef(defCols_.size()+defPixels_.size());
+    std::vector<TDefectEntry> newDef(defCols_[sensorPlus].size()+defPixels_[sensorPlus].size());
     int i=0;
-    for (auto col: defCols_)
+    for (auto col: defCols_[sensorPlus])
     {
         newDef[i].defectType = DEF_COL;
         newDef[i].col = col;
@@ -397,7 +527,7 @@ bool IIQCalFile::rebuildCalFileData(std::vector<uint8_t>& calFileData) const
         ++i;
     }
 
-    for (auto [col, row]: defPixels_)
+    for (auto [col, row]: defPixels_[sensorPlus])
     {
         newDef[i].defectType = DEF_PIXEL;
         newDef[i].col = col;
@@ -410,16 +540,16 @@ bool IIQCalFile::rebuildCalFileData(std::vector<uint8_t>& calFileData) const
     }
 
     // parse and copy original file
-    bool hasDefTag = calTags_.find(CAL_DefectCorrection) != calTags_.end();
-    bool hasCreateTime = calTags_.find(CAL_TimeCreated) != calTags_.end();
-    TIIQHeader* hdr = (TIIQHeader*)calFileData_.data();
+    bool hasDefTag = calTags_[sensorPlus].find(CAL_DefectCorrection) != calTags_[sensorPlus].end();
+    bool hasCreateTime = calTags_[sensorPlus].find(CAL_TimeCreated) != calTags_[sensorPlus].end();
+    TIIQHeader* hdr = (TIIQHeader*)calFileData_[sensorPlus].data();
     uint32_t ifdOffset = convEndian32(hdr->dirOffset, convEndian_);
 
-    if (calFileData_.size() < ifdOffset+8+sizeof(TIiqCalTagEntry))
+    if (calFileData_[sensorPlus].size() < ifdOffset+8+sizeof(TIiqCalTagEntry))
         return false;
 
-    const uint8_t* data = (uint8_t*)calFileData_.data();
-    const uint8_t* end = data + calFileData_.size();
+    const uint8_t* data = (uint8_t*)calFileData_[sensorPlus].data();
+    const uint8_t* end = data + calFileData_[sensorPlus].size();
 
     uint32_t entries = convEndian32(*(uint32_t*)(data+ifdOffset), convEndian_);
     const TIiqCalTagEntry* tagEntry = (TIiqCalTagEntry*)(data+ifdOffset+8);
@@ -511,6 +641,7 @@ bool IIQCalFile::rebuildCalFileData(std::vector<uint8_t>& calFileData) const
 
     // swap the vectors
     calFileData.swap(newCalData);
+
     return true;
 }
 
@@ -542,8 +673,27 @@ IIQCalFile IIQFile::getIIQCalFile()
     return IIQCalFile();
 }
 
+bool IIQFile::isSensorPlus()
+{
+    if (is_phaseone_compressed() && meta_length>sizeof(TSensorPlusFooter))
+    {
+        uint32_t data;
+        ifp->seek(meta_offset, SEEK_SET);
+        if (ifp->read(&data, 1, sizeof(data)) == sizeof(data))
+            convEndian_ = (data == IIQ_BIGENDIAN);
+        TSensorPlusFooter footer;
+        ifp->seek(meta_offset+meta_length-sizeof(footer), SEEK_SET);
+        if (ifp->read(&footer, 1, sizeof(footer)) == sizeof(footer) &&
+            convEndian32(footer.calFooterMagic, convEndian_) == CAL_FOOTER_MAGIC)
+        {
+            return convEndian32(footer.calNumber, convEndian_) == 2;
+        }
+    }
+    return false;
+}
+
 // Applies corrections
-void IIQFile::applyPhaseOneCorr(const IIQCalFile& calFile, bool applyDefects)
+void IIQFile::applyPhaseOneCorr(const IIQCalFile& calFile, bool sensorPlus, bool applyDefects)
 {
     if (!is_phaseone_compressed() || !imgdata.rawdata.raw_alloc)
         return;
@@ -561,10 +711,10 @@ void IIQFile::applyPhaseOneCorr(const IIQCalFile& calFile, bool applyDefects)
         {
             std::vector<uint8_t> data;
             if (applyDefects && calFile.hasUnsavedChanges())
-                calFile.saveToData(data);
+                calFile.saveToData(data, sensorPlus);
 
             const auto& calData = applyDefects && calFile.hasUnsavedChanges()
-                                    ? data : calFile.getCalFileData();
+                                    ? data : calFile.getCalFileData(sensorPlus);
             calData_ = calData.data();
             calDataEnd_ = calData_ + calData.size();
             calDataCurPtr_ = calData_;

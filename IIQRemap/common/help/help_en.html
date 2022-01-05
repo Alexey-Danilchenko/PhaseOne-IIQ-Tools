@@ -25,8 +25,8 @@ body {
 
 <p>This software allows to perform defective pixels and
 columns remap for Phase One digital backs. Currently supported
-digital back models are Phase One Pnn/Pnn+ backs. Newer IIQ
-backs may work as well but were not extensively tested.</p>
+digital back models are Phase One Pnn/Pnn+ backs. IIQ
+backs work as well but were not extensively tested.</p>
 
 <h4><a href="#features">Skip to help on application features.</a></h4>
 
@@ -42,14 +42,22 @@ also uploaded onto digital back by Phase One Firmware Updater and this
 can be leveraged to amend existing defects (add new defected pixels and columns,
 remove one that no longer defective etc). This is the point of this utility -
 to manage defects and produce an amended calibration file for uploading into
-digital back. </p>
+digital back.</p>
 
 <p>&nbsp;</p>
 
-<h3>Remap procedure for Phase One Pnn+ backs:</h3>
+<p>Digital backs with Sensor+ use two calibrations: one for standard resolution
+and one for Sensor+ reduced resolution mode. For those backs both type of raw files
+(at least one for each mode standard and Sensor+) are needed to create full
+calibration file.
+</p>
+
+<p>&nbsp;</p>
+
+<h3>Remap procedure for Phase One Pnn+/IQnnn backs:</h3>
 
 <ul>
-<li>On Phase One Pnn/Pnn+ digital backs based on Kodak senosrs the remap
+<li>On Phase One Pnn/Pnn+ digital backs based on Kodak sensors the remap
     generally is better performed on dark frames (where people can see distinct
     defective columns when pulling the shadows or using high ISOs which on those
     digital backs are frequently software based). To perform a remap a dark shot
@@ -60,11 +68,20 @@ digital back. </p>
     can stack up to 7 raw files in a median stack leaving only stable defects in
     (this is most useful to detect bad columns).</li>
 
-<li>Load up raw file or several raw files in a median stack</li>
+<li>Some Pnn/Pnn+ and all of IQnnn digital backs support Sensor+ with reduced
+    resolution. For those backs both modes need to be remapped and the above procedure
+    for getting dark frames needs to happen for both standard and Sensor+ mode.
+    At the very least raw file for each mode needs to be loaded to create correct
+    two-parts calibration file. This needs to happen even if only one mode needs to
+    be remapped. Incomplete calibration file can be written but should not be uploaded
+    to digital back.</li>
+
+<li>Load up raw file or several raw files in a median stack. For for digital backs
+    with Sensor+, loaded file will be made active and highlighted.</li>
 
 <li>You can always create a back up calibration file by loading up raw IIQ File
-    and saving calibration immediately - it will just save the calibration file
-    from IIQ.</li>
+    (or two - for digital backs with Sensor+) and saving calibration immediately
+    - it will just save the calibration file from IIQ.</li>
 
 <li><b>Columns remap:</b> adjust the exposure in a raw display tab to make the
     defects visible, use composite or grayscale raw display mode, switch on the
@@ -142,6 +159,17 @@ digital back. </p>
     mode when the columns or points may be selected with mouse cursor and either set or unset
     as defective. The selected mode has to correspond to defects selection so it will be
     synchronised with those settings.</p>
+
+<p>&nbsp;</p>
+
+<p>If digital back supports Sensor+ two mutually exclusive buttons will be shown here to allow
+   switching between Standard and Sensor+ raw files and calibration file portion. If one of the
+   buttons is disabled then it means that appropriate raw file taken in that mode (standard or
+   Sensor+) has not been loaded yet. Active button remains pressed and highlighted to indicate
+   which mode currently being worked in. Pressing the unselected button will switch the UI to
+   that file and calibration file portion, update all the stats and recalculate all the
+   thresholds (and this operation may take some time).
+</p>
 
 <p>&nbsp;</p>
 
