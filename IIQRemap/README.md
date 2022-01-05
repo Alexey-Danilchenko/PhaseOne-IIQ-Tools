@@ -81,9 +81,12 @@ to refresh raw display) and untick all defects in defect selection section to se
 8) Repeat the procedure by loading abother dark raw or stack of them for the same digital back (remapped
 defects will be preserved across the load).
 
-9) Save the calibration file when satisfied (or do it intermediately whilst progressing with remap).
+9) If your digital back supports Sensor+, repeat the all of the above for Sensor+ part selecting Sensor+
+mode it in the application.
 
-10) Use Phase One Firmware Update utility to upload calibration file to your back and enjoy the results.
+10) Save the calibration file when satisfied (or do it intermediately whilst progressing with remap).
+
+11) Use Phase One Firmware Update utility to upload calibration file to your back and enjoy the results.
 
 Of course the above is only a recommended procedure. You can do manual remap with just about any file
 (if the defects can be clearly seen). The automatic remaps of defective points however will only work
