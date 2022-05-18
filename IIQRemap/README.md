@@ -1,7 +1,7 @@
 # IIQ Remap
 
 This software allows to perform defective pixels and columns remap for Phase One digital backs. Currently supported
-digital back models are Phase One Pnn/Pnn+ backs. Newer IIQ backs may work as well but were not extensively tested.
+digital back models are Phase One Pnn/Pnn+ and IQnnn backs.
 
 ## Windows version
 Windows version has a depndency on Microsoft Visual Studio runtime which may or may not be on your system. So if the prebuild version
