@@ -234,6 +234,7 @@ std::map<uint32_t, uint8_t> calTagDataTypes =
     { 0x40B, TIFF_SHORT },
     // float
     { 0x041c, TIFF_FLOAT},
+    { 0x041e, TIFF_FLOAT},
     // double
     { 0x408, TIFF_DOUBLE },
     { 0x413, TIFF_DOUBLE }
@@ -1093,7 +1094,7 @@ void processIiqCalIfd(uint8_t* buf, uint32_t size, uint32_t ifdOffset)
         uint32_t sizeBytes = fromBigEndian(tagData->sizeBytes);
         uint32_t dataType = calTagDataTypes[iiqTag] > 0
                                 ? calTagDataTypes[iiqTag]
-                                : 1;
+                                : ((sizeBytes & 3) ? TIFF_BYTE : TIFF_SLONG);
 
         if (sizeBytes == 0)
         {
