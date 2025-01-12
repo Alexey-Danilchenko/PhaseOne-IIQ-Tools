@@ -46,6 +46,13 @@
 // All the structures for the types in binary files go in C style declaration
 // to maintain struct packing and avoid C++ alignment/padding
 
+// IIQ file structure:
+//      TiffHeader
+//      MakerNote with raw (IIQ header etc)
+//      Tiff strips data
+//      Tiff IFD + tag data
+//      EXIF IFD + tag data
+
 struct TTiffHeader
 {
     uint16_t magic;      // magic number (defines byte order)

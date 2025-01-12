@@ -630,6 +630,9 @@ static uint32_t tagNameContext = 0;
 
 static std::string bodySerial;
 
+// static global file buf offset
+static uint8_t* fileBuf = nullptr;
+
 uint16_t fromBigEndian16(uint16_t ulValue) {
     if (!bigEndian)
         return ulValue;
@@ -710,26 +713,28 @@ uint32_t getTagDataSize(uint32_t dataType)
     return it == tagDataSize.cend() ? 1 : it->second;
 }
 
-void listTag(uint16_t tiffTag, uint16_t dataType, uint32_t sizeBytes, uint32_t dataOffset)
+void listTag(uint16_t tiffTag, uint16_t dataType, uint32_t sizeBytes, uint32_t dataOffset, uint32_t globalOffset)
 {
     if (doPrint)
-        printf("Tag: %d (%X) : %s, Datatype: %s, Size(bytes): %u (%X), Offset: %X, Data:\n",
+        printf("Tag: %d (%X) : %s, Datatype: %s, Size(bytes): %u (%X), Offset: %X (absolute: %X), Data:\n",
                tiffTag,
                tiffTag,
                getTiffTagName(tiffTag),
                getTagDataTypeName(dataType),
                sizeBytes,
                sizeBytes,
-               dataOffset);
+               dataOffset,
+               globalOffset+dataOffset);
     else
-        printf("Tag: %5d (%4X) : %-40s, Datatype: %-15s, Size(bytes): %8u (%6X), Offset: %08X\n",
+        printf("Tag: %5d (%4X) : %-40s, Datatype: %-15s, Size(bytes): %8u (%6X), Offset: %08X (absolute: %X)\n",
                tiffTag,
                tiffTag,
                getTiffTagName(tiffTag),
                getTagDataTypeName(dataType),
                sizeBytes,
                sizeBytes,
-               dataOffset);
+               dataOffset,
+               globalOffset+dataOffset);
 }
 
 void printfRational(uint32_t n, uint32_t d, bool isSigned)
@@ -1107,7 +1112,7 @@ void processIiqCalIfd(uint8_t* buf, uint32_t size, uint32_t ifdOffset)
             (!tagsExcluded && tagNumbers.find(iiqTag) != tagNumbers.end()))
         {
             if (doList)
-                listTag(iiqTag, dataType, sizeBytes, data);
+                listTag(iiqTag, dataType, sizeBytes, data, buf - fileBuf);
             if (doPrint)
                 printTag(iiqTag, dataType, sizeBytes, buf + data);
         }
@@ -1143,7 +1148,7 @@ void processIiqIfd(uint8_t* buf, uint32_t size, uint32_t ifdOffset)
             (!tagsExcluded && tagNumbers.find(iiqTag) != tagNumbers.end()))
         {
             if (doList)
-                listTag(iiqTag, dataType, sizeBytes, data);
+                listTag(iiqTag, dataType, sizeBytes, data, buf - fileBuf);
             if (doPrint && iiqTag != IIQ_RawData && iiqTag != IIQ_CalibrationData)
                 printTag(iiqTag, dataType, sizeBytes, buf + data);
         }
@@ -1184,7 +1189,7 @@ void processTiffIfd(uint8_t* buf, uint32_t size, uint32_t ifdOffset)
             (!tagsExcluded && tagNumbers.find(tiffTag) != tagNumbers.end()))
         {
             if (doList)
-                listTag(tiffTag, dataType, sizeBytes, data);
+                listTag(tiffTag, dataType, sizeBytes, data, buf - fileBuf);
             if (doPrint && tiffTag != TAG_EXIF_MAKERNOTE)
                 printTag(tiffTag, dataType, sizeBytes, buf + data);
         }
@@ -1201,6 +1206,9 @@ void processTiffIfd(uint8_t* buf, uint32_t size, uint32_t ifdOffset)
         if ((uint8_t*)tagData > end)
             return;
     }
+    uint32_t* nextIfd = (uint32_t*)tagData;
+    if (*nextIfd)
+        ifdEntries.emplace_back(0, buf + fromBigEndian(*nextIfd), 0);
 }
 
 void processIfd(uint8_t* inBuf, uint32_t inSize)
@@ -1405,6 +1413,7 @@ int main(int argc, char* argv[])
             memset(inBuf, 0, inSize+4);
             len=(int)fread(inBuf, 1, inSize, file);
             fclose(file);
+            fileBuf = inBuf;
 
             if (inSize != len)
             {
