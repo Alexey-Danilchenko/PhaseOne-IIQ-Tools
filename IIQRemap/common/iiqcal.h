@@ -45,6 +45,7 @@ public:
 
     // Initialisers/destructors
     IIQCalFile() : convEndian_(false), hasChanges_{false,false}, hasSensorPlus_(false) {};
+    IIQCalFile(const std::vector<uint8_t>& data);
     IIQCalFile(const uint8_t* data, const size_t size);
     IIQCalFile(const TFileNameType& fileName);
     ~IIQCalFile() = default;
@@ -75,6 +76,10 @@ public:
     bool saveCalFile();
     bool saveToData(std::vector<uint8_t>& calData, bool sensorPlus) const
         { return rebuildCalFileData(calData, sensorPlus); }
+
+    // Save changed cal file directly to given IIQ file (if matching serial)
+    // The IIQ file supplied as loaded data and is patched directly
+    bool saveToIIQ(std::vector<uint8_t>& iiqFileData);
 
     // Reset any changes and repopulate defects from last saved
     void reset() { parseCalFileData(false); parseCalFileData(true); }
@@ -177,6 +182,8 @@ public:
 
     bool isPhaseOne() { return is_phaseone_compressed(); }
 
+    void closeFileStream();
+
 private:
     // moved from LibRaw internal ones
     int p1rawc(unsigned row, unsigned col, unsigned& count) const;
@@ -185,6 +192,7 @@ private:
     void phase_one_fix_pixel_grad(unsigned row, unsigned col);
     void phase_one_flat_field(int is_float, int nc);
     int phase_one_correct(bool applyDefects = true);
+    void readCalData();
 
     uint32_t dataGetPos() { return calDataCurPtr_-calData_; }
     void dataSetPos(uint32_t pos, bool fromCur = false);
@@ -198,6 +206,7 @@ private:
     const uint8_t* calDataEnd_;
     const uint8_t* calDataCurPtr_;
     bool convEndian_;
+    std::vector<uint8_t> calFileData_;
 };
 
 #endif

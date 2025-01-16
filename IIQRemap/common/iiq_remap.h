@@ -252,6 +252,7 @@ private Q_SLOTS:
     void openCalFile();
     void saveCalFile();
     void discardChanges();
+    void applyToFiles();
 
     void loadRaw();
 

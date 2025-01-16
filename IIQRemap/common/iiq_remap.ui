@@ -587,7 +587,7 @@ be loaded.</string>
                 <x>0</x>
                 <y>0</y>
                 <width>530</width>
-                <height>557</height>
+                <height>550</height>
                </rect>
               </property>
               <property name="sizePolicy">
@@ -703,21 +703,25 @@ be loaded.</string>
             <property name="spacing">
              <number>2</number>
             </property>
-            <item row="1" column="1">
-             <widget class="QPushButton" name="btnLoadCal">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
-                <horstretch>0</horstretch>
-                <verstretch>0</verstretch>
-               </sizepolicy>
-              </property>
+            <item row="2" column="0">
+             <widget class="QPushButton" name="btnSave">
               <property name="toolTip">
-               <string>Load the .calib previously saved
-calibration file for the digital back
-being remapped</string>
+               <string>Save the remapped defects into calibration file
+ready for upload onto digital back</string>
               </property>
               <property name="text">
-               <string>Load &amp;Calibration</string>
+               <string>Save Calibration</string>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="1">
+             <widget class="QPushButton" name="btnReset">
+              <property name="toolTip">
+               <string>Discard remap and reload defects
+from currently opened IIQ/TIF file</string>
+              </property>
+              <property name="text">
+               <string>Reset</string>
               </property>
              </widget>
             </item>
@@ -740,25 +744,35 @@ median stacked to reduce noise.</string>
               </property>
              </widget>
             </item>
-            <item row="2" column="1">
-             <widget class="QPushButton" name="btnReset">
+            <item row="1" column="1">
+             <widget class="QPushButton" name="btnLoadCal">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
               <property name="toolTip">
-               <string>Discard remap and reload defects
-from currently opened IIQ/TIF file</string>
+               <string>Load the .calib previously saved
+calibration file for the digital back
+being remapped</string>
               </property>
               <property name="text">
-               <string>Reset</string>
+               <string>Load &amp;Calibration</string>
               </property>
              </widget>
             </item>
-            <item row="2" column="0">
-             <widget class="QPushButton" name="btnSave">
+            <item row="3" column="0" colspan="2">
+             <widget class="QPushButton" name="btnApplyToFiles">
               <property name="toolTip">
-               <string>Save the remapped defects into calibration file
-ready for upload onto digital back</string>
+               <string>Applies new calibration to 
+selected existing IIQ files.
+This will override calibration
+already in those files with this 
+one ready to be processed.</string>
               </property>
               <property name="text">
-               <string>Save Calibration</string>
+               <string>Apply Calibration to IIQ files</string>
               </property>
              </widget>
             </item>
@@ -4239,7 +4253,7 @@ zeroing the data up to selected values </string>
      <x>0</x>
      <y>0</y>
      <width>870</width>
-     <height>20</height>
+     <height>24</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -4251,6 +4265,7 @@ zeroing the data up to selected values </string>
     <addaction name="separator"/>
     <addaction name="actionSave"/>
     <addaction name="actionDiscard_changes"/>
+    <addaction name="actionApplyToFiles"/>
     <addaction name="separator"/>
     <addaction name="actionQuit"/>
    </widget>
@@ -4333,6 +4348,11 @@ zeroing the data up to selected values </string>
    </property>
    <property name="menuRole">
     <enum>QAction::NoRole</enum>
+   </property>
+  </action>
+  <action name="actionApplyToFiles">
+   <property name="text">
+    <string>Apply Calibration to IIQ Files</string>
    </property>
   </action>
  </widget>

@@ -27,6 +27,7 @@
 #include <ctime>
 #include <cstdio>
 #include <filesystem>
+#include <map>
 
 #pragma pack(push)
 #pragma pack(1)
@@ -40,15 +41,55 @@
 // IFD is non standard and entries are similar to TIFF tag entries but are all
 // in 32 bits and do not contain data type (data count is a size in bytes).
 //
+#define TIFF_VERSION_CLASSIC 42
+
+#define TIFF_BIGENDIAN      0x4d4d
+#define TIFF_LITTLEENDIAN   0x4949
+
 #define IIQ_BIGENDIAN      0x4d4d4d4d
 #define IIQ_LITTLEENDIAN   0x49494949
 #define CAL_FOOTER_MAGIC   0x504F4331
 
+#define IIQ_RAW  0x526177
+
+#define TAG_EXIF_IFD        34665
+#define TAG_EXIF_MAKERNOTE  37500
+
+struct TTiffHeader
+{
+    uint16_t magic;      // magic number (defines byte order)
+    uint16_t version;    // TIFF version number
+    uint32_t dirOffset;  // byte offset to first directory
+};
+
+struct TTiffTagEntry
+{
+    uint16_t tiffTag;       // 0
+    uint16_t dataType;      // 2
+    uint32_t dataCount;     // 4
+    uint32_t dataOffset;    // 8
+};
+
 struct TIIQHeader
 {
-    uint32_t iiqMagic;   // Same as TIFF magic but 32bit
-    uint32_t version;
+    uint32_t iiqMagic;   // TIFF magic - 32bit
+    uint32_t rawMagic;   // 'RawB','RawC','RawT','RawH' for raw or version for calibration
     uint32_t dirOffset;
+};
+
+struct TIiqTagEntry
+{
+    uint32_t tag;           // 0
+    uint32_t dataType;      // 4
+    uint32_t sizeBytes;     // 8
+    uint32_t data;          // 12
+};
+
+struct TIiqCalTagEntry
+{
+    uint32_t tag;           // 0
+    uint32_t sizeBytes;     // 4
+    uint32_t data;          // 8
 };
 
 struct TSensorPlusFooter
@@ -68,11 +109,43 @@ struct TSensorPlusTOC
                           //   2 for Sensor+ sensors
 };
 
-struct TIiqCalTagEntry
+enum EIIQTag
 {
-    uint32_t tag;           // 0
-    uint32_t sizeBytes;     // 4
-    uint32_t data;          // 8
+    IIQ_Flip                     = 0x0100,
+    IIQ_BodySerial               = 0x0102,
+    IIQ_RommMatrix               = 0x0106,
+    IIQ_CamWhite                 = 0x0107,
+    IIQ_RawWidth                 = 0x0108,
+    IIQ_RawHeight                = 0x0109,
+    IIQ_LeftMargin               = 0x010a,
+    IIQ_TopMargin                = 0x010b,
+    IIQ_Width                    = 0x010c,
+    IIQ_Height                   = 0x010d,
+    IIQ_Format                   = 0x010e,
+    IIQ_RawData                  = 0x010f,
+    IIQ_CalibrationData          = 0x0110,
+    IIQ_KeyOffset                = 0x0112,
+    IIQ_Software                 = 0x0203,
+    IIQ_SystemType               = 0x0204,
+    IIQ_SensorTemperatureMax     = 0x0210,
+    IIQ_SensorTemperatureMin     = 0x0211,
+    IIQ_Aperture                 = 0x0401,
+    IIQ_Tag21a                   = 0x021a,
+    IIQ_StripOffset              = 0x021c,
+    IIQ_BlackData                = 0x021d,
+    IIQ_SplitColumn              = 0x0222,
+    IIQ_BlackColumns             = 0x0223,
+    IIQ_SplitRow                 = 0x0224,
+    IIQ_BlackRows                = 0x0225,
+    IIQ_RommThumbMatrix          = 0x0226,
+    IIQ_FirmwareString           = 0x0301,
+    IIQ_FocalLength              = 0x0403,
+    IIQ_Body                     = 0x0410,
+    IIQ_Lens                     = 0x0412,
+    IIQ_MaxAperture              = 0x0414,
+    IIQ_MinAperture              = 0x0415,
+    IIQ_MinFocalLength           = 0x0416,
+    IIQ_MaxFocalLength           = 0x0417
 };
 
 enum EIIQCalTag
@@ -98,6 +171,27 @@ enum EIIQCalTag
     CAL_FourTileGainLUT        = 0x431
 };
 
+enum ETiffDataType
+{
+    TIFF_NOTYPE    = 0,      // placeholder
+    TIFF_BYTE      = 1,      // 8-bit unsigned integer
+    TIFF_ASCII     = 2,      // 8-bit bytes w/ last byte null
+    TIFF_SHORT     = 3,      // 16-bit unsigned integer
+    TIFF_LONG      = 4,      // 32-bit unsigned integer
+    TIFF_RATIONAL  = 5,      // 64-bit unsigned fraction
+    TIFF_SBYTE     = 6,      // 8-bit signed integer
+    TIFF_UNDEFINED = 7,      // 8-bit untyped data
+    TIFF_SSHORT    = 8,      // 16-bit signed integer
+    TIFF_SLONG     = 9,      // 32-bit signed integer
+    TIFF_SRATIONAL = 10,     // 64-bit signed fraction
+    TIFF_FLOAT     = 11,     // 32-bit IEEE floating point
+    TIFF_DOUBLE    = 12,     // 64-bit IEEE floating point
+    TIFF_IFD       = 13,     // 32-bit unsigned integer (offset)
+
+    // non standard ones - just to aid printing IIQ values
+    IIQ_TIMESTAMP  = 128     // 32 bit integers timestamp from epoch
+};
+
 // defect remap structures
 struct TDefectEntry
 {
@@ -120,6 +214,226 @@ enum EDefectType
 };
 
 #pragma pack(pop)
+
+// IIQ file structure:
+//      TiffHeader
+//      MakerNote with raw (IIQ header etc)
+//      Tiff strips data
+//      Tiff IFD + tag data
+//      EXIF IFD + tag data
+struct IIQFileData
+{
+    uint32_t makerNoteOffset_ = 0;
+    uint32_t makerNoteSize_ = 0;
+    TTiffTagEntry* makerNoteTagEntry_ = nullptr;
+    uint32_t calDataOffset_ = 0;
+    uint32_t calDataSize_ = 0;
+    TIiqTagEntry* calDataTagEntry_ = nullptr;
+    std::string iiqSerial_;
+    TTiffHeader* tiffHdr_ = nullptr;
+    TIIQHeader* iiqHdr_ = nullptr;
+    bool convEndian_ = false;
+
+    bool parseFileData(std::vector<uint8_t>& fileData);
+    bool adjustFileData(std::vector<uint8_t>& fileData, const uint32_t newCalSize);
+};
+
+const uint32_t getTagDataSize(const uint32_t dataType)
+{
+    const std::map<uint32_t, uint32_t> tagDataSize =
+    {
+        { TIFF_NOTYPE   , 1 },
+        { TIFF_BYTE     , 1 },
+        { TIFF_ASCII    , 1 },
+        { TIFF_SHORT    , 2 },
+        { TIFF_LONG     , 4 },
+        { TIFF_RATIONAL , 8 },
+        { TIFF_SBYTE    , 1 },
+        { TIFF_UNDEFINED, 1 },
+        { TIFF_SSHORT   , 2 },
+        { TIFF_SLONG    , 4 },
+        { TIFF_SRATIONAL, 8 },
+        { TIFF_FLOAT    , 4 },
+        { TIFF_DOUBLE   , 8 },
+        { IIQ_TIMESTAMP , 4 }
+    };
+    auto it = tagDataSize.find(dataType);
+    return it == tagDataSize.cend() ? 1 : it->second;
+}
+
+// Phase One developers unlike Kodak did not design this well - their
+// adopted TIFF tag like system lacks consistent type definitions so
+// much that P1 own development has to hardcode tag types in Capture
+// One instead of using the types supplied in TIFF format.
+// It is a real mess.
+const uint32_t getIiqTagDataType(const uint32_t tag, const uint32_t setDataType)
+{
+    const std::map<uint32_t, uint8_t> tagDataType =
+    {
+        // INT32, type 1, single val
+        { 0x100, TIFF_LONG },
+        { 0x101, TIFF_LONG },
+        { 0x103, TIFF_LONG },
+        { 0x104, TIFF_LONG },
+        { 0x105, TIFF_LONG },
+        { 0x108, TIFF_LONG },
+        { 0x109, TIFF_LONG },
+        { 0x10A, TIFF_LONG },
+        { 0x10B, TIFF_LONG },
+        { 0x10C, TIFF_LONG },
+        { 0x10D, TIFF_LONG },
+        { 0x10E, TIFF_LONG },
+        { 0x112, TIFF_LONG },
+        { 0x113, TIFF_LONG },
+        { 0x20B, TIFF_LONG },
+        { 0x20C, TIFF_LONG },
+        { 0x20E, TIFF_LONG },
+        { 0x212, TIFF_LONG },
+        { 0x213, TIFF_LONG },
+        { 0x214, TIFF_LONG },
+        { 0x215, TIFF_LONG },
+        { 0x217, TIFF_LONG },
+        { 0x218, TIFF_LONG },
+        { 0x21A, TIFF_LONG },
+        { 0x21D, TIFF_LONG },
+        { 0x21E, TIFF_LONG },
+        { 0x220, TIFF_LONG },
+        { 0x222, TIFF_LONG },
+        { 0x224, TIFF_LONG },
+        { 0x227, TIFF_LONG },
+        { 0x242, TIFF_LONG },
+        { 0x243, TIFF_LONG },
+        { 0x246, TIFF_LONG },
+        { 0x247, TIFF_LONG },
+        { 0x248, TIFF_LONG },
+        { 0x249, TIFF_LONG },
+        { 0x24A, TIFF_LONG },
+        { 0x24B, TIFF_LONG },
+        { 0x24C, TIFF_LONG },
+        { 0x24D, TIFF_LONG },
+        { 0x24E, TIFF_LONG },
+        { 0x24F, TIFF_LONG },
+        { 0x250, TIFF_LONG },
+        { 0x251, TIFF_LONG },
+        { 0x253, TIFF_LONG },
+        { 0x254, TIFF_LONG },
+        { 0x255, TIFF_LONG },
+        { 0x256, TIFF_LONG },
+        { 0x25B, TIFF_LONG },
+        { 0x261, TIFF_LONG },
+        { 0x263, TIFF_LONG },
+        { 0x264, TIFF_LONG },
+        { 0x265, TIFF_LONG },
+        { 0x26B, TIFF_LONG },
+        { 0x300, TIFF_LONG },
+        { 0x304, TIFF_LONG },
+        { 0x311, TIFF_LONG },
+        { 0x404, TIFF_LONG },
+        { 0x406, TIFF_LONG },
+        { 0x407, TIFF_LONG },
+        { 0x408, TIFF_LONG },
+        { 0x409, TIFF_LONG },
+        { 0x411, TIFF_LONG },
+        { 0x413, TIFF_LONG },
+        { 0x420, TIFF_LONG },
+        { 0x450, TIFF_LONG },
+        { 0x451, TIFF_LONG },
+        { 0x452, TIFF_LONG },
+        { 0x460, TIFF_LONG },
+        { 0x463, TIFF_LONG },
+        { 0x536, TIFF_LONG },
+        { 0x537, TIFF_LONG },
+        { 0x53E, TIFF_LONG },
+        { 0x540, TIFF_LONG },
+        { 0x541, TIFF_LONG },
+        { 0x542, TIFF_LONG },
+        { 0x543, TIFF_LONG },
+        { 0x547, TIFF_LONG },
+        // ASCII, length as specified, type 4?
+        { 0x102, TIFF_ASCII },
+        { 0x200, TIFF_ASCII },
+        { 0x201, TIFF_ASCII },
+        { 0x203, TIFF_ASCII },
+        { 0x204, TIFF_ASCII },
+        { 0x262, TIFF_ASCII },
+        { 0x301, TIFF_ASCII },
+        { 0x310, TIFF_ASCII },
+        { 0x312, TIFF_ASCII },
+        { 0x410, TIFF_ASCII },
+        { 0x412, TIFF_ASCII },
+        { 0x530, TIFF_ASCII },
+        { 0x531, TIFF_ASCII },
+        { 0x532, TIFF_ASCII },
+        { 0x533, TIFF_ASCII },
+        { 0x534, TIFF_ASCII },
+        { 0x535, TIFF_ASCII },
+        { 0x548, TIFF_ASCII },
+        { 0x549, TIFF_ASCII },
+        // FLOAT(32bits), length as specified
+        { 0x106, TIFF_FLOAT },
+        { 0x107, TIFF_FLOAT },
+        { 0x205, TIFF_FLOAT },
+        { 0x216, TIFF_FLOAT },
+        { 0x226, TIFF_FLOAT },
+        { 0x53D, TIFF_FLOAT },
+        // INT32, type 2, pointer
+        { 0x10F, TIFF_LONG },
+        { 0x110, TIFF_LONG },
+        { 0x202, TIFF_LONG },
+        { 0x20A, TIFF_LONG },
+        { 0x20D, TIFF_LONG },
+        { 0x21F, TIFF_LONG },
+        { 0x223, TIFF_LONG },
+        { 0x225, TIFF_LONG },
+        { 0x258, TIFF_LONG },
+        { 0x259, TIFF_LONG },
+        { 0x25A, TIFF_LONG },
+        { 0x260, TIFF_LONG },
+        { 0x26A, TIFF_LONG },
+        // undefined, type 4?
+        { 0x111, TIFF_UNDEFINED },
+        { 0x219, TIFF_UNDEFINED },
+        // FLOAT, type 1
+        { 0x20F, TIFF_FLOAT },
+        { 0x210, TIFF_FLOAT },
+        { 0x211, TIFF_FLOAT },
+        { 0x21B, TIFF_FLOAT },
+        { 0x221, TIFF_FLOAT },
+        { 0x22A, TIFF_FLOAT },
+        { 0x22B, TIFF_FLOAT },
+        { 0x22C, TIFF_FLOAT },
+        { 0x22F, TIFF_FLOAT },
+        { 0x244, TIFF_FLOAT },
+        { 0x245, TIFF_FLOAT },
+        { 0x252, TIFF_FLOAT },
+        { 0x257, TIFF_FLOAT },
+        { 0x269, TIFF_FLOAT },
+        { 0x320, TIFF_FLOAT },
+        { 0x321, TIFF_FLOAT },
+        { 0x322, TIFF_FLOAT },
+        { 0x400, TIFF_FLOAT },
+        { 0x401, TIFF_FLOAT },
+        { 0x402, TIFF_FLOAT },
+        { 0x403, TIFF_FLOAT },
+        { 0x414, TIFF_FLOAT },
+        { 0x415, TIFF_FLOAT },
+        { 0x416, TIFF_FLOAT },
+        { 0x417, TIFF_FLOAT },
+        { 0x461, TIFF_FLOAT },
+        { 0x462, TIFF_FLOAT },
+        { 0x538, TIFF_FLOAT },
+        { 0x539, TIFF_FLOAT },
+        { 0x53A, TIFF_FLOAT },
+        { 0x53F, TIFF_FLOAT },
+        // INT32, type 2
+        { 0x21C, TIFF_LONG },
+        { 0x25C, TIFF_LONG },
+        { 0x25D, TIFF_LONG }
+    };
+
+    auto it = tagDataType.find(tag);
+    return it == tagDataType.cend() ? setDataType : it->second;
+}
 
 // endian conversion
 uint16_t convEndian16(uint16_t uValue, bool convert)
@@ -153,11 +467,188 @@ uint64_t convEndian64(uint64_t uValue, bool convert)
            ((uValue >> 40) & 0xFF00)    | (uValue >> 56);
 }
 
+// internal struct methods
+bool IIQFileData::parseFileData(std::vector<uint8_t>& fileData)
+{
+    if (sizeof(TTiffHeader)+sizeof(TIIQHeader)>fileData.size())
+        return false;
+
+    auto inBuf = fileData.data();
+
+    tiffHdr_ = (TTiffHeader*)inBuf;
+    iiqHdr_ = (TIIQHeader*)(inBuf+sizeof(TTiffHeader));
+    bool valid = (tiffHdr_->magic == TIFF_LITTLEENDIAN ||
+                  tiffHdr_->magic == TIFF_BIGENDIAN) &&
+                 (iiqHdr_->iiqMagic == IIQ_LITTLEENDIAN ||
+                  iiqHdr_->iiqMagic == IIQ_BIGENDIAN);
+    if (valid)
+    {
+        convEndian_ = iiqHdr_->iiqMagic == IIQ_BIGENDIAN;
+        valid = convEndian32(iiqHdr_->rawMagic, convEndian_)>>8 == IIQ_RAW &&
+                convEndian32(iiqHdr_->dirOffset, convEndian_) != 0xbad0bad;
+    }
+    if (!valid)
+        return false;
+
+    // parse tiff IFDs
+    uint32_t ifdOffset = convEndian32(tiffHdr_->dirOffset, convEndian_);
+    uint32_t entries = convEndian16(*(uint16_t*)(inBuf+ifdOffset), convEndian_);
+    TTiffTagEntry* tagData = (TTiffTagEntry*)(inBuf+ifdOffset+2);
+
+    while (entries > 0)
+    {
+        uint32_t tiffTag = convEndian16(tagData->tiffTag, convEndian_);
+        uint32_t data = convEndian32(tagData->dataOffset, convEndian_);
+        uint32_t dataType = convEndian16(tagData->dataType, convEndian_);
+        uint32_t sizeBytes = convEndian32(tagData->dataCount, convEndian_)
+                             * getTagDataSize(dataType);
+        if (tiffTag == TAG_EXIF_IFD && data + sizeBytes < fileData.size())
+        {
+            entries = convEndian16(*(uint16_t*)(inBuf+data), convEndian_);
+            tagData = (TTiffTagEntry*)(inBuf+data+2);
+        }
+        else if (tiffTag == TAG_EXIF_MAKERNOTE && data + sizeBytes < fileData.size())
+        {
+            makerNoteOffset_ = data;
+            makerNoteSize_ = sizeBytes;
+            makerNoteTagEntry_ = tagData;
+            break;
+        }
+        else
+        {
+            --entries;
+            ++tagData;
+            if ((uint8_t*)tagData - inBuf > fileData.size())
+                return false;
+        }
+    }
+
+    if (!makerNoteSize_ || makerNoteOffset_ != sizeof(TTiffHeader))
+        return false;
+
+    uint8_t* mkrNoteBuf = inBuf + makerNoteOffset_;
+    uint8_t* mkrNoteEnd = mkrNoteBuf + makerNoteSize_;
+    ifdOffset = convEndian32(iiqHdr_->dirOffset, convEndian_);
+
+    entries = convEndian32(*(uint32_t*)(mkrNoteBuf+ifdOffset), convEndian_);
+    TIiqTagEntry* iiqTagData = (TIiqTagEntry*)(mkrNoteBuf+ifdOffset+8);
+
+    while (entries > 0)
+    {
+        uint32_t iiqTag = convEndian32(iiqTagData->tag, convEndian_);
+        uint32_t data = convEndian32(iiqTagData->data, convEndian_);
+        uint32_t dataType = getIiqTagDataType(iiqTag, convEndian32(iiqTagData->dataType, convEndian_));
+        uint32_t sizeBytes = convEndian32(iiqTagData->sizeBytes, convEndian_);
+        if (sizeBytes <= 4)
+            data = (uint8_t*)(&(iiqTagData->data)) - mkrNoteBuf;
+
+        // add extra IFDs
+        if (iiqTag == IIQ_CalibrationData && mkrNoteBuf + data + sizeBytes < mkrNoteEnd)
+        {
+            calDataOffset_ = mkrNoteBuf - inBuf + data;
+            calDataSize_ = sizeBytes;
+            calDataTagEntry_ = iiqTagData;
+        }
+        if (iiqTag == IIQ_BodySerial)
+            iiqSerial_ = (const char*)mkrNoteBuf + data;
+
+        // calculate offset for next tag
+        --entries;
+        ++iiqTagData;
+        if ((uint8_t*)iiqTagData > mkrNoteEnd)
+            return false;
+    }
+    return !iiqSerial_.empty() && calDataSize_ > 0;
+}
+
+bool IIQFileData::adjustFileData(std::vector<uint8_t>& fileData, const uint32_t newCalSize)
+{
+    if (newCalSize <= calDataSize_)
+        return false;
+
+    uint8_t* iiqBuf = fileData.data();
+
+    // Update cal tag entry size
+    uint32_t sizeDiff = newCalSize - calDataSize_;
+    calDataTagEntry_->sizeBytes = convEndian32(newCalSize, convEndian_);
+
+    // Update maker note tags if any
+    uint8_t* mkrNoteBuf = iiqBuf + makerNoteOffset_;
+    uint8_t* mkrNoteEnd = mkrNoteBuf + makerNoteSize_;
+    uint32_t ifdOffset = convEndian32(iiqHdr_->dirOffset, convEndian_);
+
+    if (ifdOffset > calDataOffset_)
+        iiqHdr_->dirOffset = convEndian32(ifdOffset + sizeDiff, convEndian_);
+
+    uint32_t entries = convEndian32(*(uint32_t*)(mkrNoteBuf+ifdOffset), convEndian_);
+    TIiqTagEntry* iiqTagData = (TIiqTagEntry*)(mkrNoteBuf+ifdOffset+8);
+
+    while (entries > 0)
+    {
+        uint32_t dataOffset = convEndian32(iiqTagData->data, convEndian_);
+        uint32_t sizeBytes = convEndian32(iiqTagData->sizeBytes, convEndian_);
+        if (sizeBytes > 4 && makerNoteOffset_ + dataOffset > calDataOffset_)
+            iiqTagData->data = convEndian32(dataOffset + sizeDiff, convEndian_);
+
+        --entries;
+        ++iiqTagData;
+    }
+
+    // Now update all standard TIFF tags
+    ifdOffset = convEndian32(tiffHdr_->dirOffset, convEndian_);
+    if (ifdOffset > calDataOffset_)
+        tiffHdr_->dirOffset = convEndian32(ifdOffset + sizeDiff, convEndian_);
+    std::vector<uint32_t> ifdOffs = { ifdOffset };
+    while (!ifdOffs.empty())
+    {
+        ifdOffset = ifdOffs.back();
+        ifdOffs.pop_back();
+
+        uint32_t entries = convEndian16(*(uint16_t*)(iiqBuf+ifdOffset), convEndian_);
+        TTiffTagEntry* tagData = (TTiffTagEntry*)(iiqBuf+ifdOffset+2);
+
+        while (entries > 0)
+        {
+            uint32_t tiffTag = convEndian16(tagData->tiffTag, convEndian_);
+            uint32_t dataOffset = convEndian32(tagData->dataOffset, convEndian_);
+            uint32_t dataType = convEndian16(tagData->dataType, convEndian_);
+            uint32_t sizeBytes = convEndian32(tagData->dataCount, convEndian_)
+                                * getTagDataSize(dataType);
+
+            if (tiffTag == TAG_EXIF_IFD)
+                ifdOffs.push_back(dataOffset);
+
+            if ((tiffTag == TAG_EXIF_IFD || sizeBytes > 4) && dataOffset > calDataOffset_)
+                tagData->dataOffset = convEndian32(dataOffset + sizeDiff, convEndian_);
+
+            --entries;
+            ++tagData;
+        }
+        uint32_t* nextIfd = (uint32_t*)tagData;
+        if (*nextIfd)
+        {
+            uint32_t nextIfdOffs = convEndian32(*nextIfd, convEndian_);
+            ifdOffs.push_back(nextIfdOffs);
+            if (nextIfdOffs > calDataOffset_)
+                *nextIfd = convEndian32(nextIfdOffs + sizeDiff, convEndian_);
+        }
+    }
+    return true;
+}
+
 // constructors and assignements
+IIQCalFile::IIQCalFile(const std::vector<uint8_t>& data)
+    : hasChanges_{false,false}, convEndian_(false), hasSensorPlus_(false)
+{
+    if (data.size() > 0)
+        initCalData(data.data(), data.size());
+}
+
 IIQCalFile::IIQCalFile(const uint8_t* data, const size_t size)
     : hasChanges_{false,false}, convEndian_(false), hasSensorPlus_(false)
 {
-    initCalData(data, size);
+    if (size > 0)
+        initCalData(data, size);
 }
 
 IIQCalFile::IIQCalFile(const IIQCalFile::TFileNameType& fileName)
@@ -645,6 +1136,92 @@ bool IIQCalFile::rebuildCalFileData(std::vector<uint8_t>& calFileData, bool sens
     return true;
 }
 
+bool IIQCalFile::saveToIIQ(std::vector<uint8_t>& iiqFileData)
+{
+    if (!valid())
+        return false;
+
+    // Parse IIQ file
+    IIQFileData iiqData;
+    if (!iiqData.parseFileData(iiqFileData) || iiqData.iiqSerial_ != calSerial_)
+        return false;
+
+    // We have a matching file - do the cal file identification and rebuild
+    // Identify cal file part
+    uint8_t* iiqBuf = iiqFileData.data();
+    bool sensorPlus = false;
+    if (hasSensorPlus_ && iiqData.calDataSize_ > sizeof(TSensorPlusFooter))
+    {
+        const auto footer = (TSensorPlusFooter*)(iiqBuf + iiqData.calDataOffset_
+                                                    + iiqData.calDataSize_
+                                                    - sizeof(TSensorPlusFooter));
+        if (convEndian32(footer->calFooterMagic, iiqData.convEndian_) == CAL_FOOTER_MAGIC)
+            sensorPlus = convEndian32(footer->calNumber, iiqData.convEndian_) == 2;
+        if (!valid(sensorPlus))
+            return false;
+    }
+
+    // Rebuild the cal file part if needed
+    if (hasChanges_[sensorPlus])
+    {
+        // First remove duplicate pixels
+        for (auto col: defCols_[sensorPlus])
+            removeDefPixel(col, -1, sensorPlus);
+
+        // Merge defects back into binary
+        if (!rebuildCalFileData(calFileData_[sensorPlus], sensorPlus))
+            return false;
+    }
+
+    // Build a new cal data
+    std::vector<uint8_t> newCalData(calFileData_[sensorPlus]);
+    if (hasSensorPlus_)
+    {
+        // Add Sensor+ footer
+        newCalData.resize(newCalData.size() + sizeof(TSensorPlusFooter));
+        auto footer = (TSensorPlusFooter*)(newCalData.data() + newCalData.size()
+                                           - sizeof(TSensorPlusFooter));
+        footer->calDataOffset = 0;
+        footer->calSize = convEndian32(calFileData_[sensorPlus].size(), convEndian_);
+        footer->calFooterMagic = convEndian32(CAL_FOOTER_MAGIC, convEndian_);
+        footer->calNumber = convEndian32(sensorPlus + 1, convEndian_);
+        footer->totalCals = convEndian32(1, convEndian_);
+        footer->modTimestamp = convEndian32((uint32_t)std::time(nullptr), convEndian_);
+    }
+
+    // Update existing file in place
+    if (newCalData.size() <= iiqData.calDataSize_)
+    {
+        // Just modify this in place without any other changes
+        iiqData.calDataTagEntry_->sizeBytes = convEndian32(newCalData.size(),
+                                                           iiqData.convEndian_);
+        std::memcpy(iiqBuf + iiqData.calDataOffset_, newCalData.data(), newCalData.size());
+    }
+    else
+    {
+        // This needs updating all the tag offsets with cal size diffs
+        uint32_t sizeDiff = newCalData.size() - iiqData.calDataSize_;
+
+        // Transform existing IIQ file updating all the differences
+        if (!iiqData.adjustFileData(iiqFileData, newCalData.size()))
+            return false;
+
+        // Copy old file sections and new cal data
+        std::vector<uint8_t> newIiqFile(iiqFileData.size() + sizeDiff);
+        uint8_t* newIIQData = newIiqFile.data();
+        std::memcpy(newIIQData, iiqBuf, iiqData.calDataOffset_);
+        newIIQData += iiqData.calDataOffset_;
+        std::memcpy(newIIQData, newCalData.data(), newCalData.size());
+        newIIQData += newCalData.size();
+        std::memcpy(newIIQData,
+                    iiqBuf + iiqData.calDataOffset_ + iiqData.calDataSize_,
+                    iiqFileData.size() - iiqData.calDataOffset_ - iiqData.calDataSize_);
+        iiqFileData.swap(newIiqFile);
+    }
+
+    return true;
+}
+
 // Copied LibRaw internal functionality
 #define meta_length  libraw_internal_data.unpacker_data.meta_length
 #define meta_offset  libraw_internal_data.unpacker_data.meta_offset
@@ -663,33 +1240,40 @@ IIQFile::~IIQFile()
 
 IIQCalFile IIQFile::getIIQCalFile()
 {
-    if (is_phaseone_compressed() && meta_length)
-    {
-        std::vector<uint8_t> calData(meta_length);
-        ifp->seek(meta_offset, SEEK_SET);
-        if (ifp->read(calData.data(), 1, calData.size()) == calData.size())
-            return IIQCalFile(calData.data(), calData.size());
-    }
-    return IIQCalFile();
+    readCalData();
+    return IIQCalFile(calFileData_);
 }
 
 bool IIQFile::isSensorPlus()
 {
-    if (is_phaseone_compressed() && meta_length>sizeof(TSensorPlusFooter))
+    readCalData();
+    if (calFileData_.size() > sizeof(TSensorPlusFooter))
     {
-        uint32_t data;
-        ifp->seek(meta_offset, SEEK_SET);
-        if (ifp->read(&data, 1, sizeof(data)) == sizeof(data))
-            convEndian_ = (data == IIQ_BIGENDIAN);
-        TSensorPlusFooter footer;
-        ifp->seek(meta_offset+meta_length-sizeof(footer), SEEK_SET);
-        if (ifp->read(&footer, 1, sizeof(footer)) == sizeof(footer) &&
-            convEndian32(footer.calFooterMagic, convEndian_) == CAL_FOOTER_MAGIC)
-        {
-            return convEndian32(footer.calNumber, convEndian_) == 2;
-        }
+        convEndian_ = *(uint32_t*)calFileData_.data() == IIQ_BIGENDIAN;
+        auto footer = (TSensorPlusFooter*)(calFileData_.data() + calFileData_.size()
+                                           - sizeof(TSensorPlusFooter));
+        if (convEndian32(footer->calFooterMagic, convEndian_) == CAL_FOOTER_MAGIC)
+            return convEndian32(footer->calNumber, convEndian_) == 2;
     }
     return false;
+}
+
+void IIQFile::readCalData()
+{
+    if (calFileData_.size() == 0 && ifp && is_phaseone_compressed() && meta_length)
+    {
+        calFileData_.resize(meta_length);
+        ifp->seek(meta_offset, SEEK_SET);
+        if (ifp->read(calFileData_.data(), 1, calFileData_.size()) != calFileData_.size())
+            calFileData_.clear();
+    }
+}
+
+void IIQFile::closeFileStream()
+{
+    // first - read all original metadata
+    readCalData();
+    recycle_datastream(); // close file handle
 }
 
 // Applies corrections
@@ -994,7 +1578,7 @@ int IIQFile::phase_one_correct(bool applyDefects)
             data = get32();
             save = dataGetPos();
             dataSetPos(data);
-            if (tag == 0x0400 && applyDefects)
+            if (tag == CAL_DefectCorrection && applyDefects)
             { /* Sensor defects */
                 while ((len -= 8) >= 0)
                 {
@@ -1019,7 +1603,7 @@ int IIQFile::phase_one_correct(bool applyDefects)
                     }
                 }
             }
-            else if (tag == 0x0419)
+            else if (tag == CAL_DualOutputPoly)
             { /* Polynomial curve */
                 for (get32(), i = 0; i < 8; i++)
                     poly[i] = getFloat();
@@ -1031,7 +1615,7 @@ int IIQFile::phase_one_correct(bool applyDefects)
                 }
                 goto apply; /* apply to right half */
             }
-            else if (tag == 0x041a)
+            else if (tag == CAL_PolynomialCurve)
             { /* Polynomial curve */
                 for (i = 0; i < 4; i++)
                     poly[i] = getFloat();
@@ -1051,24 +1635,24 @@ int IIQFile::phase_one_correct(bool applyDefects)
                         RAW(row, col) = imgdata.color.curve[RAW(row, col)];
                 }
             }
-            else if (tag == 0x0401)
+            else if (tag == CAL_LumaAllColourFlatField)
             { /* All-color flat fields */
                 phase_one_flat_field(1, 2);
             }
-            else if (tag == 0x0416 || tag == 0x0410)
+            else if (tag == CAL_LumaFlatField2 || tag == CAL_Luma)
             {
                 phase_one_flat_field(0, 2);
             }
-            else if (tag == 0x040b)
+            else if (tag == CAL_ChromaRedBlue)
             { /* Red+blue flat field */
                 phase_one_flat_field(0, 4);
             }
-            else if (tag == 0x0412)
+            else if (tag == CAL_XYZCorrection)
             {
                 // XYZ corrections are not supported - they are stored outside
                 // of cal file and is one of P1 weirdness
             }
-            else if (tag == 0x041f && !qlin_applied)
+            else if (tag == CAL_FourTileLinearisation && !qlin_applied)
             { /* Quadrant linearization */
                 ushort lc[2][2][16], ref[16];
                 int qr, qc;
@@ -1113,7 +1697,7 @@ int IIQFile::phase_one_correct(bool applyDefects)
                 }
                 qlin_applied = 1;
             }
-            else if (tag == 0x041e && !qmult_applied)
+            else if (tag == CAL_FourTileOutput && !qmult_applied)
             { /* Quadrant multipliers */
                 float qmult[2][2] = {{1, 1}, {1, 1}};
                 get32();
@@ -1147,7 +1731,7 @@ int IIQFile::phase_one_correct(bool applyDefects)
                 }
                 qmult_applied = 1;
             }
-            else if (tag == 0x0431 && !qmult_applied)
+            else if (tag == CAL_FourTileGainLUT && !qmult_applied)
             { /* Quadrant combined */
                 ushort lc[2][2][7], ref[7];
                 int qr, qc;

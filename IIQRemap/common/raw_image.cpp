@@ -563,6 +563,7 @@ void IIQRawImage::setRawImage(std::unique_ptr<IIQFile>& iiqFile, double scale)
 {
     bool sensorPlus = iiqFile->isSensorPlus();
     iiqFile_[sensorPlus] = std::move(iiqFile);
+    iiqFile_[sensorPlus]->closeFileStream(); // read all needed resources and release file handle
     if (!calFile_.valid() || calFile_.getCalSerial() != iiqFile_[sensorPlus]->getPhaseOneSerial())
     {
         calFile_ = iiqFile_[sensorPlus]->getIIQCalFile();

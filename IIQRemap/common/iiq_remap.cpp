@@ -30,8 +30,10 @@
 #include <QDesktopServices>
 #include <QDoubleSpinBox>
 #include <QDir>
+#include <QFile>
 #include <QFileDialog>
 #include <QPalette>
+#include <QProgressDialog>
 #include <QProxyStyle>
 #include <QSettings>
 #include <QStyle>
@@ -53,7 +55,7 @@
 #include <vector>
 #include <memory>
 
-#define APP_VERSION " v1.5"
+#define APP_VERSION " v1.6.1"
 
 #define MAIN_TITLE APP_NAME APP_VERSION
 
@@ -194,6 +196,7 @@ IIQRemap::IIQRemap()
     connect(ui.btnLoadCal, SIGNAL(clicked()), this, SLOT(openCalFile()));
     connect(ui.btnSave, SIGNAL(clicked()), this, SLOT(saveCalFile()));
     connect(ui.btnReset, SIGNAL(clicked()), this, SLOT(discardChanges()));
+    connect(ui.btnApplyToFiles, SIGNAL(clicked()), this, SLOT(applyToFiles()));
     connect(ui.btnRemoveDefects, SIGNAL(clicked()), this, SLOT(deleteShownDefects()));
     connect(ui.btnAutoRemap, SIGNAL(clicked()), this, SLOT(autoRemap()));
     connect(ui.btnZoom100, SIGNAL(clicked()), this, SLOT(zoomFull()));
@@ -253,6 +256,7 @@ IIQRemap::IIQRemap()
     connect(ui.actionOpen, SIGNAL(triggered()), this, SLOT(openCalFile()));
     connect(ui.actionSave, SIGNAL(triggered()), this, SLOT(saveCalFile()));
     connect(ui.actionDiscard_changes, SIGNAL(triggered()), this, SLOT(discardChanges()));
+    connect(ui.actionApplyToFiles, SIGNAL(triggered()), this, SLOT(applyToFiles()));
     connect(ui.actionLoad_raw, SIGNAL(triggered()), this, SLOT(loadRaw()));
     connect(ui.actionAuto_remap, SIGNAL(triggered()), this, SLOT(autoRemap()));
     connect(ui.actionHelp_web, SIGNAL(triggered()), this, SLOT(help()));
@@ -453,6 +457,12 @@ void IIQRemap::updateWidgets()
     ui.btnLoadCal->setEnabled(hasRaw);
     ui.btnSave->setEnabled(hasCalFile);
     ui.btnReset->setEnabled(hasCalFile);
+    ui.btnApplyToFiles->setEnabled(hasCalFile);
+
+    ui.actionOpen->setEnabled(hasRaw);
+    ui.actionSave->setEnabled(hasCalFile);
+    ui.actionDiscard_changes->setEnabled(hasCalFile);
+    ui.actionApplyToFiles->setEnabled(hasCalFile);
 
     if (hasCalFile)
     {
@@ -614,6 +624,98 @@ void IIQRemap::discardChanges()
     }
     updateWidgets();
     updateDefectStats();
+}
+
+void IIQRemap::applyToFiles()
+{
+    auto& calFile = ui.rawImage->getCalFile();
+
+    if (!calFile.valid())
+        return;
+
+    auto fileNames = QFileDialog::getOpenFileNames(
+                        this,
+                        tr("Apply Calibration to Phase One .IIQ file(s)"),
+                        curRawPath,
+                        tr("Phase One IIQ (*.iiq *.tif *.tiff)"));
+
+    // filter through and leave only files
+    auto it = fileNames.begin();
+    while (it != fileNames.end())
+    {
+        QFileInfo info(*it);
+
+        if (!info.isFile())
+            it = fileNames.erase(it);
+        else
+            ++it;
+    }
+
+    bool doBackup = true;
+
+    if (fileNames.size() > 0)
+    {
+        auto res = showMessage(tr("Backup Files"),
+                    tr("Do you want to create backups for all IIQ files?"),
+                    tr("Selecting No will overwrite existing files!"),
+                    QMessageBox::Question,
+                    QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel,
+                    QMessageBox::Yes);
+
+        if (res == QMessageBox::Cancel)
+            return;
+        doBackup = res == QMessageBox::Yes;
+    }
+
+    QProgressDialog progress("Processing IIQ files...", "Abort", 0, fileNames.size(), this);
+    progress.setMinimumDuration(1);
+    progress.setWindowModality(Qt::WindowModal);
+    uint32_t filesProcessed = 0;
+    std::vector<uint8_t> iiqFileData;
+    for (int i = 0; i < fileNames.size(); ++i)
+    {
+        progress.setValue(i);
+        progress.setLabelText(tr("Processing %1 file").arg(QFileInfo(fileNames.at(i)).fileName()));
+        QApplication::processEvents();
+
+        if (progress.wasCanceled())
+            break;
+
+        bool loaded = false;
+        QFile iiqFile(fileNames.at(i));
+        if (iiqFile.size() && iiqFile.open(QIODevice::ReadOnly))
+        {
+            iiqFileData.resize(iiqFile.size());
+            loaded = iiqFile.read((char*)iiqFileData.data(), iiqFile.size())
+                        == iiqFile.size();
+            iiqFile.close();
+        }
+
+        if (loaded && calFile.saveToIIQ(iiqFileData))
+        {
+            // first - backup existing
+            auto backupName = fileNames.at(i) + ".BAK";
+            if ((!doBackup || QFile::rename(fileNames.at(i), backupName)) &&
+                iiqFile.open(QIODevice::WriteOnly))
+            {
+                iiqFile.write((char*)iiqFileData.data(), iiqFileData.size());
+                iiqFile.close();
+                ++filesProcessed;
+            }
+        }
+    }
+
+    progress.setValue(fileNames.size());
+    if (filesProcessed > 0)
+        showMessage(tr("Info"),
+                    tr("Successfully processed %1 out of %2 files")
+                        .arg(filesProcessed)
+                        .arg(fileNames.size()),
+                    tr(""),
+                    QMessageBox::Information);
+    else
+        showMessage(tr("Info"), tr("No files were processed"), tr(""),
+                    QMessageBox::Information);
 }
 
 void IIQRemap::sensorPlusSelected(int id)
