@@ -54,6 +54,7 @@
 
 #define TAG_EXIF_IFD        34665
 #define TAG_EXIF_MAKERNOTE  37500
+#define TAG_STRIPOFFSETS  273
 
 struct TTiffHeader
 {
@@ -620,6 +621,18 @@ bool IIQFileData::adjustFileData(std::vector<uint8_t>& fileData, const uint32_t 
 
             if ((tiffTag == TAG_EXIF_IFD || sizeBytes > 4) && dataOffset > calDataOffset_)
                 tagData->dataOffset = convEndian32(dataOffset + sizeDiff, convEndian_);
+
+            if (tiffTag == TAG_STRIPOFFSETS && getTagDataSize(dataType) == 4)
+            {
+                uint32_t* stripOffset = sizeBytes > 4  ? (uint32_t*)(iiqBuf + dataOffset) : &tagData->dataOffset;
+                uint32_t dataCount = convEndian32(tagData->dataCount, convEndian_);
+                for (int i=0; i<dataCount; ++i, ++stripOffset)
+                {
+                    uint32_t offs = convEndian32(*stripOffset, convEndian_);
+                    if (offs > calDataOffset_)
+                        *stripOffset = convEndian32(offs + sizeDiff, convEndian_);
+                }
+            }
 
             --entries;
             ++tagData;

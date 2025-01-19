@@ -55,7 +55,7 @@
 #include <vector>
 #include <memory>
 
-#define APP_VERSION " v1.6.1"
+#define APP_VERSION " v1.6.2"
 
 #define MAIN_TITLE APP_NAME APP_VERSION
 
@@ -653,19 +653,19 @@ void IIQRemap::applyToFiles()
 
     bool doBackup = true;
 
-    if (fileNames.size() > 0)
-    {
-        auto res = showMessage(tr("Backup Files"),
-                    tr("Do you want to create backups for all IIQ files?"),
-                    tr("Selecting No will overwrite existing files!"),
-                    QMessageBox::Question,
-                    QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel,
-                    QMessageBox::Yes);
+    if (fileNames.size() == 0)
+        return;
 
-        if (res == QMessageBox::Cancel)
-            return;
-        doBackup = res == QMessageBox::Yes;
-    }
+    auto res = showMessage(tr("Backup Files"),
+                tr("Do you want to create backups for all IIQ files?"),
+                tr("Selecting No will overwrite existing files!"),
+                QMessageBox::Question,
+                QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel,
+                QMessageBox::Yes);
+
+    if (res == QMessageBox::Cancel)
+        return;
+    doBackup = res == QMessageBox::Yes;
 
     QProgressDialog progress("Processing IIQ files...", "Abort", 0, fileNames.size(), this);
     progress.setMinimumDuration(1);
