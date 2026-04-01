@@ -63,9 +63,9 @@
 
 #define MAX_RAWS  7
 
-#if defined( Q_OS_MACX )
+#if defined( Q_OS_MACOS )
 #define BUNDLE_ID CFSTR("IIQRemap")
-#if defined(_QT_STATIC_) && QT_VERSION >= 0x050000
+#if defined(_QT_STATIC_) && QT_VERSION >= 0x060000
 #include <QtPlugin>
 Q_IMPORT_PLUGIN (QCocoaIntegrationPlugin);
 #endif
@@ -1152,7 +1152,7 @@ void IIQRemap::help()
 {
     QDir dir(QApplication::applicationDirPath());
 
-#ifdef Q_OS_MACX
+#ifdef Q_OS_MACOS
     dir.cdUp();
 #endif
 
@@ -1665,7 +1665,7 @@ public:
 
     void polish (QWidget *w)
     {
-#ifdef Q_OS_MACX
+#ifdef Q_OS_MACOS
         QMenu* mn = qobject_cast<QMenu*>(w);
         if (!mn && !w->testAttribute(Qt::WA_MacNormalSize))
             w->setAttribute(Qt::WA_MacSmallSize);

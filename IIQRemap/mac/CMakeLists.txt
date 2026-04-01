@@ -5,7 +5,7 @@ set_target_properties(IIQRemap PROPERTIES
     MACOSX_BUNDLE                      TRUE
     MACOSX_BUNDLE_BUNDLE_NAME          IIQRemap
     MACOSX_BUNDLE_BUNDLE_VERSION       "${IIQRemap_VERSION}"
-    MACOSX_BUNDLE_COPYRIGHT            "© 2021 Alexey Danilchenko"
+    MACOSX_BUNDLE_COPYRIGHT            "© 2026 Alexey Danilchenko"
     MACOSX_BUNDLE_GUI_IDENTIFIER       com.IIQRemap
     MACOSX_BUNDLE_ICON_FILE            IIQRemap.icns
     MACOSX_BUNDLE_INFO_STRING          "Sensor defect remap application for Phase One Pxx backs"
@@ -28,8 +28,8 @@ target_sources(IIQRemap PRIVATE
 )
 
 # For static QT builds - import plugins
-qt5_import_plugins(IIQRemap
-    INCLUDE Qt::QCocoaIntegrationPlugin
+qt6_import_plugins(IIQRemap
+    INCLUDE Qt6::QCocoaIntegrationPlugin
 )
 
 # Shared libs
@@ -75,16 +75,16 @@ macro(copy_imported_shared_lib _target _shared_target)
 endmacro()
 
 function(copy_libraries _target)
-    # Handling non QT5
+    # Handling non QT6
     foreach(_lib ${ARGN})
-        if(NOT ${_lib} MATCHES "^Qt5")
+        if(NOT ${_lib} MATCHES "^Qt")
             copy_imported_shared_lib(${_target} ${_lib})
         endif()
     endforeach()
 
     # Retrieve the absolute path to uic and then use that path to find
     # the binaries
-    get_target_property(_qmake_executable Qt5::uic IMPORTED_LOCATION)
+    get_target_property(_qmake_executable Qt::uic IMPORTED_LOCATION)
     get_filename_component(_qt_bin_dir "${_qmake_executable}" DIRECTORY)
     find_program(_macdeployqt macdeployqt HINTS "${_qt_bin_dir}")
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -104,9 +104,9 @@ function(copy_libraries _target)
     endif()
 endfunction()
 
-# Qt5 plugins
+# Qt6 plugins
 # based on code from CMake's QtDialog/CMakeLists.txt
-macro(copy_qt5_plugin _target _qt_plugin_name)
+macro(copy_qt6_plugin _target _qt_plugin_name)
     get_target_property(_qt_plugin_path "${_qt_plugin_name}" LOCATION)
     if(EXISTS "${_qt_plugin_path}")
         get_filename_component(_qt_plugin_file "${_qt_plugin_path}" NAME)
@@ -125,7 +125,7 @@ macro(copy_qt5_plugin _target _qt_plugin_name)
 endmacro()
 
 function(copy_qt_plugins _target)
-    copy_qt5_plugin(${_target} "Qt5::QCocoaIntegrationPlugin")
+    copy_qt6_plugin(${_target} "Qt6::QCocoaIntegrationPlugin")
 endfunction()
 
 # Extras

@@ -1508,7 +1508,6 @@ void IIQFile::phase_one_flat_field(int is_float, int nc)
     wide = head[2] / head[4] + (head[2] % head[4] != 0);
     high = head[3] / head[5] + (head[3] % head[5] != 0);
     mrow = (float *)calloc(nc * wide, sizeof *mrow);
-    merror(mrow, "phase_one_flat_field()");
     for (y = 0; y < high; ++y)
     {
         checkCancel();

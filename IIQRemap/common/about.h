@@ -41,10 +41,6 @@ private:
     Ui::About ui;
 
     void mousePressEvent(QMouseEvent * event);
-
-private Q_SLOTS:
-
-    void donate();
 };
 
 #endif // ABOUT_H

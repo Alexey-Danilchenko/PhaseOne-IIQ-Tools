@@ -324,24 +324,24 @@ void IIQRawImage::resizeEvent(QResizeEvent *event)
     calcViewpointOffsets();
 }
 
-void IIQRawImage::mouseMoveEvent(QMouseEvent * e)
+void IIQRawImage::mouseMoveEvent(QMouseEvent *e)
 {
     if (iiqFile_[curSensorPlus_])
     {
-        uint16_t col = uint16_t(double(e->x()-pX)/scale_);
-        uint16_t row = uint16_t(double(e->y()-pY)/scale_);
+        uint16_t col = uint16_t(double(e->position().rx()-pX)/scale_);
+        uint16_t row = uint16_t(double(e->position().ry()-pY)/scale_);
 
         if (col<width_ && row<height_)
             Q_EMIT imageCursorPosUpdated(row, col);
     }
 }
 
-void IIQRawImage::mousePressEvent(QMouseEvent * e)
+void IIQRawImage::mousePressEvent(QMouseEvent *e)
 {
     if (calFile_.valid(curSensorPlus_) && curDefSetMode_ != M_NONE)
     {
-        uint16_t col = uint16_t(double(e->x()-pX)/scale_);
-        uint16_t row = uint16_t(double(e->y()-pY)/scale_);
+        uint16_t col = uint16_t(double(e->position().rx()-pX)/scale_);
+        uint16_t row = uint16_t(double(e->position().ry()-pY)/scale_);
 
         if (col>=width_ || row>=height_)
             return;
