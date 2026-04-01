@@ -55,7 +55,7 @@
 #include <vector>
 #include <memory>
 
-#define APP_VERSION " v1.6.2"
+#define APP_VERSION " v1.6.3"
 
 #define MAIN_TITLE APP_NAME APP_VERSION
 
