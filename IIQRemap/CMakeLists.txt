@@ -57,11 +57,11 @@ add_executable(IIQRemap)
 include_directories(common)
 
 target_link_libraries(IIQRemap
-                      Qt6::Core
-                      Qt6::Gui
-                      Qt6::Widgets
-                      Qt6::Network
-                      Qt6::Xml
+                      Qt::Core
+                      Qt::Gui
+                      Qt::Widgets
+                      Qt::Network
+                      Qt::Xml
                       TBB::tbb
                       ZLIB::ZLIB
                       LibRaw::LibRaw)
